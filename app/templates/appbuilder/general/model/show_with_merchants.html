@@ -1,0 +1,29 @@
+{% extends "appbuilder/general/model/show.html" %}
+
+{% block related_views %}
+  {{ super() }}
+
+  <h3>Merchants</h3>
+  {% if model.merchants %}
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for merchant in model.merchants %}
+        <tr>
+          <td>{{ merchant.name }}</td>
+          <td>
+            <a href="{{ url_for('MerchantModelView.show', pk=merchant.id) }}" class="btn btn-primary btn-sm">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No merchants for this category.</p>
+  {% endif %}
+{% endblock %}
