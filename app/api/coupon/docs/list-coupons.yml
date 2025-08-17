@@ -1,0 +1,52 @@
+swagger: "2.0"
+info:
+  title: List Coupons
+  description: Get a list of all coupons.
+  version: "1.0.0"
+schemes:
+  - http
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /coupon/list:
+    get:
+      tags:
+        - coupon
+      summary: List all coupons
+      description: Returns a list of coupons.
+      parameters: []
+      responses:
+        "200":
+          description: A list of coupons
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Coupon'
+        "500":
+          description: Internal server error
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+definitions:
+  Coupon:
+    type: object
+    properties:
+      id:
+        type: integer
+      coupon_code:
+        type: string
+      consumer_id:
+        type: integer
+      status:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+      redeemed_at:
+        type: string
+        format: date-time 

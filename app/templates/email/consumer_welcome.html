@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Welcome to StudentX - Complete Your Profile</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: left;
+            padding: 20px 0;
+            border-bottom: 1px solid #eeeeee;
+        }
+        .logo {
+            max-width: 180px;
+        }
+        .content {
+            padding: 20px 0;
+        }
+        .cta-button {
+            display: block;
+            width: 80%;
+            max-width: 300px;
+            margin: 25px auto;
+            padding: 12px 20px;
+            background-color: #00a870;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 4px;
+            text-decoration: none;
+        }
+        .benefits {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .benefit-item {
+            margin-bottom: 10px;
+            padding-left: 20px;
+            position: relative;
+        }
+        .benefit-item:before {
+            content: "✓";
+            color: #00a870;
+            position: absolute;
+            left: 0;
+        }
+        .footer {
+            font-size: 12px;
+            color: #777777;
+            text-align: center;
+            border-top: 1px solid #eeeeee;
+            padding-top: 20px;
+        }
+        .deal-examples {
+            margin: 25px 0;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="content">
+        <p>Hello {{ context.name }},</p>
+
+        <p>Welcome to StudentX - your access to thousands of verified student discounts on software, fashion, subscriptions, and more.</p>
+
+        <h3>To unlock all exclusive deals, please complete your account setup:</h3>
+
+        <a href="https://studentx.co.ke/me?tab=verification" class="cta-button">Complete Profile & Verify</a>
+
+
+        <p>The verification process takes less than 2 minutes and ensures all deals are exclusively available to students.</p>
+
+        <p>If you need any assistance, please reply to this email or visit our <a href="https://studentx.co.ke/help">Help Center</a>.</p>
+
+        <p>Welcome to the community,</p>
+        <p>The StudentX Team</p>
+    </div>
+
+    <div class="footer">
+        <p><a href="https://studentx.co.ke/deals">Browse Deals</a> | <a href="https://studentx.co.ke">How It Works</a> | <a href="https://studentx.co.ke/contact">Contact Us</a></p>
+        <p>© 2024 StudentX. All rights reserved.</p>
+        <p>If you no longer wish to receive these emails, you may <a href="https://studentx.co.ke/unsubscribe">unsubscribe</a>.</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,113 @@
+{% extends 'appbuilder/general/model/list.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_coupons }}</div>
+                <div class="stat-label">Total Coupons</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ active_coupons }}</div>
+                <div class="stat-label">Active Coupons</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ redeemed_coupons }}</div>
+                <div class="stat-label">Redeemed Coupons</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ expired_coupons }}</div>
+                <div class="stat-label">Expired Coupons</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group">
+                        <a href="{{ url_for('CouponModelView.add') }}" class="btn btn-primary">
+                            <i class="fa fa-plus"></i> Add New Coupon
+                        </a>
+                        <button type="button" class="btn btn-success" onclick="redeemSelected()">
+                            <i class="fa fa-check"></i> Redeem Selected
+                        </button>
+                        <button type="button" class="btn btn-info" onclick="exportSelected()">
+                            <i class="fa fa-download"></i> Export Selected
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main List View -->
+    {{ super() }}
+</div>
+
+{% block tail_js %}
+{{ super() }}
+<script>
+    function redeemSelected() {
+        var selected = getSelectedItems();
+        if (selected.length > 0) {
+            if (confirm('Are you sure you want to redeem the selected coupons?')) {
+                $.ajax({
+                    url: '{{ url_for("CouponModelView.redeem") }}',
+                    type: 'POST',
+                    data: { items: selected },
+                    success: function() {
+                        window.location.reload();
+                    }
+                });
+            }
+        } else {
+            alert('Please select at least one coupon');
+        }
+    }
+
+    function exportSelected() {
+        var selected = getSelectedItems();
+        if (selected.length > 0) {
+            // Create a form and submit it to download the CSV
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ url_for("CouponModelView.export") }}';
+            
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'items';
+            input.value = JSON.stringify(selected);
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+        } else {
+            alert('Please select at least one coupon');
+        }
+    }
+
+    function getSelectedItems() {
+        var selected = [];
+        $('input[name="rowid"]:checked').each(function() {
+            selected.push($(this).val());
+        });
+        return selected;
+    }
+</script>
+{% endblock %}
+{% endblock %} 

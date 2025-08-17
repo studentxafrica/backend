@@ -5,10 +5,10 @@ from sqlalchemy import event
 
 from app.models.base_model import BaseModel
 from app.models.category import Category  # type: ignore
-from flask_appbuilder import Model  # type: ignore
+from app import db  # type: ignore
 
 
-class Merchant(BaseModel, Model):
+class Merchant(BaseModel, db.Model):
     """
     Vendor model definition.
     """
@@ -18,12 +18,18 @@ class Merchant(BaseModel, Model):
         'categories.id', ondelete='SET NULL'), nullable=True)
 
     # Attributes
-    email = Column(String(128), nullable=False, unique=True)
+    email = Column(String(128), nullable=False, unique=True, index=True)
     name = Column(String(128), nullable=False)
     logo = Column(String(128), nullable=True, default=None)
     website = Column(String(128), nullable=True, default=None)
+    phone = Column(String(128), nullable=True, default=None)
+    address = Column(String(256), nullable=True, default=None)
+    city = Column(String(128), nullable=True, default=None)
+    country = Column(String(128), nullable=True, default=None)
+    zip_code = Column(String(16), nullable=True, default=None)
     _password = Column(String(256), nullable=False)
     preferred_currency = Column(String(8), nullable=True, default=None)
+    email_verified_on = Column(DateTime, nullable=True)
     approved_on = Column(DateTime, nullable=True)
 
     # *One
@@ -36,6 +42,14 @@ class Merchant(BaseModel, Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def email_verified(self) -> bool:
+        """
+        Check if the merchant's email is verified.
+        Returns True if email is verified, False otherwise.
+        """
+        return self.email_verified_on is not None
 
     @property
     def approved(self) -> bool:

@@ -1,0 +1,120 @@
+/* Dashboard Container */
+.dashboard-container {
+	padding: 20px;
+  }
+  
+  /* Metric Cards */
+  .metric-card {
+	border-radius: 8px;
+	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+	margin-bottom: 20px;
+	border: none;
+  }
+  
+  .metric-card .card-body {
+	padding: 20px;
+  }
+  
+  .metric-value {
+	font-size: 28px;
+	font-weight: 700;
+	color: #2c3e50;
+  }
+  
+  .metric-label {
+	font-size: 14px;
+	color: #7f8c8d;
+	margin-bottom: 5px;
+  }
+  
+  .metric-trend {
+	font-size: 12px;
+	display: flex;
+	align-items: center;
+  }
+  
+  .metric-trend.positive {
+	color: #27ae60;
+  }
+  
+  .metric-trend.negative {
+	color: #e74c3c;
+  }
+  
+  /* Charts */
+  .card {
+	border-radius: 8px;
+	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+	margin-bottom: 20px;
+	border: none;
+  }
+  
+  .card-header {
+	background-color: white;
+	border-bottom: 1px solid #ecf0f1;
+	padding: 15px 20px;
+  }
+  
+  /* Activity Feed */
+  .activity-feed {
+	padding: 0;
+  }
+  
+  .activity-item {
+	display: flex;
+	padding: 15px 20px;
+	border-bottom: 1px solid #ecf0f1;
+  }
+  
+  .activity-item.highlight {
+	background-color: #f8f9fa;
+  }
+  
+  .activity-icon {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 15px;
+	color: white;
+  }
+  
+  .activity-content {
+	flex: 1;
+  }
+  
+  .activity-message {
+	font-weight: 500;
+	margin-bottom: 3px;
+  }
+  
+  .activity-time {
+	font-size: 12px;
+	color: #95a5a6;
+  }
+  
+  /* Tables */
+  .table {
+	margin-bottom: 0;
+  }
+  
+  .table th {
+	border-top: none;
+	font-weight: 600;
+	color: #7f8c8d;
+	font-size: 13px;
+	text-transform: uppercase;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+	.metric-value {
+	  font-size: 22px;
+	}
+	
+	.metric-card .card-body {
+	  padding: 15px;
+	}
+  }

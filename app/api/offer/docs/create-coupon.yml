@@ -1,0 +1,76 @@
+swagger: "2.0"
+info:
+  title: Create Coupon
+  description: Create a new coupon for an offer
+  version: "1.0.0"
+schemes:
+  - http
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /offer/{id}/coupon:
+    post:
+      tags:
+        - offer
+      summary: Create coupon
+      description: Create a new coupon for an offer
+      parameters:
+        - name: id
+          in: path
+          type: integer
+          required: true
+          description: ID of the offer
+      security:
+        - Bearer: []
+      responses:
+        "201":
+          description: Successfully created coupon
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Coupon created successfully"
+              data:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  coupon_code:
+                    type: string
+                    example: "SUMMER2024"
+                  status:
+                    type: string
+                    example: "active"
+                  created_at:
+                    type: string
+                    format: date-time
+                    example: "2024-03-20T10:00:00Z"
+        "400":
+          description: Bad request
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Invalid request data"
+        "401":
+          description: Unauthorized
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Unauthorized"
+        "404":
+          description: Offer not found
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Offer not found" 

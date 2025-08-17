@@ -28,13 +28,37 @@ class ConsumerModelView(ModelView):
     show_columns = ['first_name', 'last_name', 'email', 'phone', 'graduation_year',
                     'school', 'major', 'student_id', 'location', 'verified', 'verified_at']
     add_columns = ['first_name', 'last_name', 'email', 'phone', 'graduation_year', 'password',
-                    'school', 'major', 'student_id', 'location', 'verified_at']
+                   'school', 'major', 'student_id', 'location', 'verified_at']
     edit_columns = ['first_name', 'last_name', 'email', 'phone', 'graduation_year',
-                    'school', 'major', 'student_id', 'location', 'verified_at']
+                    'school', 'major', 'student_id', 'location', 'is_verified']
     search_columns = ['first_name', 'last_name', 'email']
 
+    edit_form_extra_fields = {
+        'profile_picture': FileField(
+            label='Profile Picture',
+            render_kw={
+                'placeholder': 'Upload new avatar (leave blank to keep current)',
+                'accept': '.png, .jpg, .jpeg .webp',
+            }
+        ),
+        'is_verified': RadioField(
+            'Verified',
+            choices=[('yes', 'Yes'), ('no', 'No')],
+            render_kw={
+                'placeholder': 'Select approval status',
+                'required': 'required',
+            }
+        ),
+    }
+
     add_form_extra_fields = {
-        'profile_picture': FileField('Profile Picture'),
+        'profile_picture': FileField(
+            label='Profile Picture',
+            render_kw={
+                'placeholder': 'Upload new avatar',
+                'accept': '.png, .jpg, .jpeg .webp',
+            }
+        ),
         'password': PasswordField(
             'Password',
             widget=BS3PasswordFieldWidget(),
@@ -43,17 +67,43 @@ class ConsumerModelView(ModelView):
                 'autocomplete': 'new-password',
                 'required': 'required',
             }
-        )
+        ),
+        'is_verified': RadioField(
+            'Verified',
+            choices=[('yes', 'Yes'), ('no', 'No')],
+            render_kw={
+                'placeholder': 'Select approval status',
+                'required': 'required',
+            }
+        ),
     }
 
-    def pre_add(self, item):
-        self._upload_to_cloudinary(item)
+    def pre_add(self, item: Consumer):
         password = request.form.get('password')
         if password:
             item.password = password  # This will trigger the @password.setter
+        verified = request.form.get('is_verified')
+        if verified:
+            if verified == 'yes' and not item.verified:
+                item.verified_at = datetime.now(timezone.utc)
+            elif verified == 'no' and item.verified:
+                item.verified_at = None
 
-    def pre_update(self, item):
-        self._upload_to_cloudinary(item)
+        file = request.files.get('profile_picture')
+        if file and file.filename:
+            self._upload_to_cloudinary(item)
+
+    def pre_update(self, item: Consumer):
+        verified = request.form.get('is_verified')
+        if verified:
+            if verified == 'yes' and not item.verified:
+                item.verified_at = datetime.now(timezone.utc)
+            elif verified == 'no' and item.verified:
+                item.verified_at = None
+
+        file = request.files.get('profile_picture')
+        if file and file.filename:
+            self._upload_to_cloudinary(item)
 
     def _upload_to_cloudinary(self, item):
         file: FileStorage = request.files.get('profile_picture')

@@ -31,6 +31,4 @@ def seed_students(number: int = 5000):
             db.session.commit()
         except IntegrityError:
             db.session.rollback()
-            print(f"Duplicate email found: {student['email']}, skipping...")
 
-    print("Student seeder completed successfully.")

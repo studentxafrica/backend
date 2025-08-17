@@ -13,4 +13,3 @@ for img_tag in soup.find_all("img"):
     if src and "http" in src:
         image_links.append(src)
 
-print("\n".join(image_links))

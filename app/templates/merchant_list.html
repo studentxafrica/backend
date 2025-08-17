@@ -1,0 +1,119 @@
+{% extends 'appbuilder/general/model/list.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_merchants }}</div>
+                <div class="stat-label">Total Merchants</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ approved_merchants }}</div>
+                <div class="stat-label">Approved Merchants</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_offers }}</div>
+                <div class="stat-label">Total Offers</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_stores }}</div>
+                <div class="stat-label">Total Stores</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group">
+                        <a href="{{ url_for('MerchantModelView.add') }}" class="btn btn-primary">
+                            <i class="fa fa-plus"></i> Add New Merchant
+                        </a>
+                        <button type="button" class="btn btn-success" onclick="approveSelected()">
+                            <i class="fa fa-check"></i> Approve Selected
+                        </button>
+                        <button type="button" class="btn btn-danger" onclick="rejectSelected()">
+                            <i class="fa fa-times"></i> Reject Selected
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main List View -->
+    {{ super() }}
+</div>
+
+{% block tail_js %}
+{{ super() }}
+<script>
+    function approveSelected() {
+        var selected = getSelectedItems();
+        if (selected.length > 0) {
+            if (confirm('Are you sure you want to approve the selected merchants?')) {
+                // Use the correct action URL format
+                var url = "{{ url_for('MerchantModelView.action_post') }}";
+                $.ajax({
+                    url: url,
+                    type: 'POST',
+                    data: {
+                        action: 'approve',
+                        rowid: selected
+                    },
+                    success: function() {
+                        window.location.reload();
+                    }
+                });
+            }
+        } else {
+            alert('Please select at least one merchant');
+        }
+    }
+
+    function rejectSelected() {
+        var selected = getSelectedItems();
+        if (selected.length > 0) {
+            if (confirm('Are you sure you want to reject the selected merchants?')) {
+                // Use the correct action URL format
+                var url = "{{ url_for('MerchantModelView.action_post') }}";
+                $.ajax({
+                    url: url,
+                    type: 'POST',
+                    data: {
+                        action: 'reject',
+                        rowid: selected
+                    },
+                    success: function() {
+                        window.location.reload();
+                    }
+                });
+            }
+        } else {
+            alert('Please select at least one merchant');
+        }
+    }
+
+    function getSelectedItems() {
+        var selected = [];
+        $('input[name="rowid"]:checked').each(function() {
+            selected.push($(this).val());
+        });
+        return selected;
+    }
+</script>
+{% endblock %}
+{% endblock %} 

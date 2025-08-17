@@ -39,11 +39,6 @@ def seed_merchants(number: int = 10):
 
         try:
             merchant_instance = Merchant(**merchant)
-            db.session.add(merchant_instance)
-            db.session.commit()
+            merchant_instance.save()
         except IntegrityError as e:
-            print(e)
             db.session.rollback()
-            print(f"Duplicate email found: {merchant['email']}, skipping...")
-
-    print("Merchant seeder completed successfully.")

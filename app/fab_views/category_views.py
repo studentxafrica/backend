@@ -9,6 +9,7 @@ from flask import request  # type: ignore
 import cloudinary  # type: ignore
 import cloudinary.uploader  # type: ignore
 from app.fab_views.merchant_view import MerchantModelView # type: ignore
+from app.fab_views.coupon_views import OfferModelView  # type: ignore
 from markupsafe import Markup  # type: ignore
 
 
@@ -44,7 +45,7 @@ class CategoryModelView(ModelView):
     edit_columns = ['name', 'slug', 'offer_count', 'merchant_count', 'image_upload']
     search_columns = ['name', 'slug', 'merchants']
     show_columns = ['name', 'slug', 'image_url']
-    related_views = [MerchantModelView]
+    related_views = [MerchantModelView, OfferModelView]
 
 
     def pre_add(self, item):

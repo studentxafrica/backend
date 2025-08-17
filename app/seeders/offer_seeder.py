@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta
 from faker import Faker
-from sqlalchemy.exc import IntegrityError
+from typing import List
+from sqlalchemy.exc import IntegrityError  # type: ignore
 from datetime import timedelta, datetime, timezone
 from app.models.offer import Offer
 from app.models.merchant import Merchant
+from app.models import Category
 from app import db
 from . import get_random_pexels_image
 import random
@@ -15,20 +18,163 @@ cover_images = [
     "https://images.pexels.com/photos/745365/pexels-photo-745365.jpeg?auto=compress&cs=tinysrgb&w=600",
     "https://images.pexels.com/photos/6207910/pexels-photo-6207910.jpeg?auto=compress&cs=tinysrgb&w=600",
     "https://images.pexels.com/photos/6279794/pexels-photo-6279794.jpeg?auto=compress&cs=tinysrgb&w=600",
-    
+    "https://images.pexels.com/photos/6207911/pexels-photo-6207911.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/6238109/pexels-photo-6238109.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/4939661/pexels-photo-4939661.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/22498607/pexels-photo-22498607/free-photo-of-girl-holding-american-football-ball.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/7563653/pexels-photo-7563653.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/7957753/pexels-photo-7957753.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/7957747/pexels-photo-7957747.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/5662852/pexels-photo-5662852.png?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/5705523/pexels-photo-5705523.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/5625001/pexels-photo-5625001.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997553/pexels-photo-3997553.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997552/pexels-photo-3997552.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997551/pexels-photo-3997551.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997550/pexels-photo-3997550.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997549/pexels-photo-3997549.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997548/pexels-photo-3997548.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997547/pexels-photo-3997547.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997546/pexels-photo-3997546.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997545/pexels-photo-3997545.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997544/pexels-photo-3997544.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997543/pexels-photo-3997543.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997542/pexels-photo-3997542.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997541/pexels-photo-3997541.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997540/pexels-photo-3997540.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997539/pexels-photo-3997539.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997538/pexels-photo-3997538.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997537/pexels-photo-3997537.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "https://images.pexels.com/photos/3997536/pexels-photo-3997536.jpeg?auto=compress&cs=tinysrgb&w=600",
 ]
+
+
+def edit_offers(field):
+    """
+    Edit existing offers to ensure they meet the constraints.
+    """
+    offers: List[Offer] = db.session.query(Offer).all()
+    for offer in offers:
+        if field == "cover_image":
+            offer.cover_image = get_random_pexels_image()
+        elif field == "start_date":
+            offer.start_date = fake.date_time_between(
+                start_date='-1y', end_date='now', tzinfo=timezone.utc)
+        elif field == "end_date":
+            offer.end_date = datetime.now(tz=timezone.utc) + \
+                timedelta(days=random.randint(3, 60))
+        elif field == 'category':
+            # Randomly assign a new category from the existing categories
+            from app.models.category import Category
+            categories = db.session.query(Category).all()
+            offer.category = random.choice(
+                categories) if categories else None
+        elif field == "highlighted_until":
+            if random.choice([True, False]):
+                offer.highlighted_until = offer.start_date + \
+                    timedelta(days=random.randint(1, 10))
+            else:
+                offer.highlighted_until = None
+        elif field == "featured_until":
+            if random.choice([True, False]):
+                base = offer.highlighted_until or offer.start_date
+                offer.featured_until = base + \
+                    timedelta(days=random.randint(1, 5))
+            else:
+                offer.featured_until = None
+        offer.save()
+
+
+# These would come from your actual SQLAlchemy models
+DISCOUNT_TYPES = ['percentage', 'fixed_amount', 'buy_one_get_one', 'free_item']
+CURRENCIES = ['BBD', 'LBP', 'KHR', 'PEN', 'SEK', 'TZS', 'CLP', 'NAD', 'EUR']
+CATEGORIES = db.session.query(Category).all()
+
+
+def generate_coupon_title_desc(record: Offer):
+    """Generate realistic title/description using existing record values"""
+    discount_type = record.discount_type
+    discount_value = record.discount_value
+    currency = record.currency
+    category_name = next(
+        (cat.name for cat in CATEGORIES if cat.id == record.category_id), 'selected items')
+    title = ""
+    desc = ""
+
+    # Percentage discounts
+    if discount_type == 'percentage':
+        title = f"{discount_value}% Off {category_name}"
+        desc = f"Save {discount_value}% on {category_name}. Limited time offer."
+
+        # Add seasonal/flash sale variants
+        if discount_value >= 30:
+            title = f"Clearance Sale: {discount_value}% Off {category_name}"
+            desc = f"Massive {discount_value}% discount on clearance {category_name}. While stocks last."
+        elif random.random() > 0.7:
+            title = f"Flash Sale: {discount_value}% Off {category_name}"
+            desc = f"Today only! {discount_value}% off all {category_name}."
+
+    # Fixed amount discounts
+    elif discount_type == 'fixed_amount':
+        title = f"{discount_value} {currency} Off {category_name}"
+        min_spend = discount_value * random.choice([2, 3, 4])
+        desc = f"Save {discount_value} {currency} when you spend {min_spend} {currency} or more on {category_name}."
+
+        if discount_value < 20:
+            title = f"Instant {discount_value} {currency} Savings"
+        elif currency == 'EUR' and discount_value > 50:
+            title = f"Big Savings: {discount_value}€ Off"
+
+    # BOGO deals
+    elif discount_type == 'buy_one_get_one':
+        if discount_value == 50:
+            title = f"Buy One {category_name}, Get One Half Price"
+        elif discount_value == 100:
+            title = f"Buy One {category_name}, Get One Free"
+        else:
+            title = f"Buy One, Get One {discount_value}% Off"
+
+    # Free item promotions
+    elif discount_type == 'free_item':
+        free_items = {
+            'Education': ['book', 'stationery', 't-shirt'],
+            'Electronics & Tech': ['headphones', 'charger', 'case', 'earbuds'],
+            'Food & Drink': ['drink', 'snack', 'dessert'],
+            'Entertainment': ['movie ticket', 'game', 'merchandise'],
+            'Fashion': ['accessory', 'hat', 'socks', 'scarf'],
+            'Health & Beauty': ['sample', 'cosmetic', 'skincare'],
+            'Sports & Outdoors': ['water bottle', 'towel', 'cap'],
+            'Travel': ['luggage tag', 'travel pillow', 'snack pack'],
+            'Home & Accessories': ['kitchen gadget', 'decor item', 'candle'],
+        }
+        item = random.choice(free_items.get(category_name, ['gift']))
+        title = f"Free {item.replace('_', ' ').title()} with Purchase"
+        desc = f"Get a free {item} with any {category_name} purchase over {discount_value} {currency}."
+
+    # Add expiration awareness if end_date is near
+    if record.end_date and (record.end_date - datetime.now()).days < 7:
+        title = f"Last Chance! {title}"
+        desc = f"{desc.split('.')[0]}. Offer ends soon!"
+
+    # return title, desc
+    record.title = title
+    record.description = desc
+    record.save()
+
 
 def seed_offers(number: int = 10):
     """
     Seed the database with sample offers.
     """
     for _ in range(number):
-        start_date = fake.date_time_between(start_date='-1y', end_date='now', tzinfo=timezone.utc)
+        start_date = fake.date_time_between(
+            start_date='-1y', end_date='now', tzinfo=timezone.utc)
 
         # Optional highlighted_until (after start)
         highlighted_until = None
         if random.choice([True, False]):
-            highlighted_until = start_date + timedelta(days=random.randint(1, 10))
+            highlighted_until = start_date + \
+                timedelta(days=random.randint(1, 10))
 
         # Optional featured_until (after highlighted or start)
         featured_until = None
@@ -37,7 +183,8 @@ def seed_offers(number: int = 10):
             featured_until = base + timedelta(days=random.randint(1, 5))
 
         # Ensure end_date is after featured/highlighted/start
-        end_base = max(filter(None, [start_date, highlighted_until, featured_until]))
+        end_base = max(
+            filter(None, [start_date, highlighted_until, featured_until]))
         end_date = end_base + timedelta(days=random.randint(1, 10))
 
         # Constraint: featured > highlighted (if both exist)
@@ -70,6 +217,3 @@ def seed_offers(number: int = 10):
             db.session.commit()
         except IntegrityError as e:
             db.session.rollback()
-            print(f"Integrity error: {e}. Skipping duplicate or invalid offer.")
-
-    print("Offer seeder completed successfully.")

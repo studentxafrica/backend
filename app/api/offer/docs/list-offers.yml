@@ -1,0 +1,56 @@
+swagger: "2.0"
+info:
+  title: List Offers
+  description: Get a list of all offers.
+  version: "1.0.0"
+schemes:
+  - http
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /offer/list:
+    get:
+      tags:
+        - offer
+      summary: List all offers
+      description: Returns a list of offers.
+      parameters: []
+      responses:
+        "200":
+          description: A list of offers
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Offer'
+        "500":
+          description: Internal server error
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+definitions:
+  Offer:
+    type: object
+    properties:
+      id:
+        type: integer
+      title:
+        type: string
+      description:
+        type: string
+      merchant_id:
+        type: integer
+      category:
+        type: string
+      status:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time 

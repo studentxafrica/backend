@@ -1,0 +1,150 @@
+{% extends 'appbuilder/general/model/list.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="card-body text-center">
+                    <h3 class="stat-value">{{ total_offers }}</h3>
+                    <p class="stat-label">Total Offers</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="card-body text-center">
+                    <h3 class="stat-value">{{ active_offers }}</h3>
+                    <p class="stat-label">Active Offers</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="card-body text-center">
+                    <h3 class="stat-value">{{ featured_offers }}</h3>
+                    <p class="stat-label">Featured Offers</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="card-body text-center">
+                    <h3 class="stat-value">{{ total_coupons }}</h3>
+                    <p class="stat-label">Total Coupons</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group">
+                        <a href="{{ url_for('OfferModelView.add') }}" class="btn btn-primary">
+                            <i class="fa fa-plus"></i> Add New Offer
+                        </a>
+                        <button type="button" class="btn btn-success" onclick="featureSelected()">
+                            <i class="fa fa-star"></i> Feature Selected
+                        </button>
+                        <button type="button" class="btn btn-info" onclick="highlightSelected()">
+                            <i class="fa fa-highlighter"></i> Highlight Selected
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main List View -->
+    {{ super() }}
+</div>
+{% endblock %}
+
+{% block tail_js %}
+{{ super() }}
+<style>
+    .stat-card {
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+        color: #6c757d;
+        font-size: 1rem;
+    }
+</style>
+
+<script>
+    function featureSelected() {
+        var selected = getSelectedItems();
+        if (selected.length > 0) {
+            if (confirm('Are you sure you want to feature the selected offers?')) {
+                // Use FAB's standard action endpoint
+                var url = "{{ url_for('OfferModelView.action_post') }}";
+                $.ajax({
+                    url: url,
+                    type: 'POST',
+                    data: {
+                        action: 'feature',
+                        rowid: selected
+                    },
+                    success: function () {
+                        window.location.reload();
+                    }
+                });
+            }
+        } else {
+            alert('Please select at least one offer');
+        }
+    }
+
+    function highlightSelected() {
+        var selected = getSelectedItems();
+        if (selected.length > 0) {
+            if (confirm('Are you sure you want to highlight the selected offers?')) {
+                // Use FAB's standard action endpoint
+                var url = "{{ url_for('OfferModelView.action_post') }}";
+                $.ajax({
+                    url: url,
+                    type: 'POST',
+                    data: {
+                        action: 'highlight',
+                        rowid: selected
+                    },
+                    success: function () {
+                        window.location.reload();
+                    }
+                });
+            }
+        } else {
+            alert('Please select at least one offer');
+        }
+    }
+
+    function getSelectedItems() {
+        var selected = [];
+        $('input[name="rowid"]:checked').each(function () {
+            selected.push($(this).val());
+        });
+        return selected;
+    }
+</script>
+{% endblock %}

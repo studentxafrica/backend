@@ -1,17 +1,18 @@
-from sqlalchemy import Column, String, Integer  # type: ignore
+from sqlalchemy import Column, String, Integer, Boolean  # type: ignore
 from sqlalchemy.orm import relationship  # type: ignore
-from flask_appbuilder import Model  # type: ignore
 
 from app.models.base_model import BaseModel
+from app import db
 
 
-class Category(BaseModel, Model):
+class Category(BaseModel, db.Model):
     """
     Category model definition.
     """
     __tablename__ = 'categories'
     name = Column(String(64), nullable=False, unique=True)
     slug = Column(String(64), nullable=False, unique=True)
+    active = Column(Boolean, nullable=False, default=True)  # 1 for active, 0 for inactive
     image_url = Column(String(128))
 
     # TODO: Move this later to redis for better performance optimization

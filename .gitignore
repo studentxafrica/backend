@@ -3,6 +3,13 @@ app.db
 ./tmp
 ./build/*
 .idea
-env
 venv
+wenv
 *.sublime*
+
+.*
+*.log
+kali-env
+migrations/versions/
+scripts/
+TODO

@@ -1,0 +1,46 @@
+---
+login:
+  post:
+    tags:
+      - Auth
+    summary: User login
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            email:
+              type: string
+            password:
+              type: string
+    responses:
+      200:
+        description: Success
+      400:
+        description: Invalid input
+---
+register:
+  post:
+    tags:
+      - Auth
+    summary: Register a new user
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+            password:
+              type: string
+    responses:
+      201:
+        description: User created
+      400:
+        description: Invalid input

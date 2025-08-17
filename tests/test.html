@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProcureGov - E-Procurement Platform</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header Styles */
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: #667eea;
+        }
+
+        .auth-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 50px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-top: 80px;
+            padding: 2rem 0;
+        }
+
+        .hero {
+            text-align: center;
+            padding: 4rem 0;
+            color: white;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        /* Dashboard Layout */
+        .dashboard {
+            display: none;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin: 2rem 0;
+            overflow: hidden;
+        }
+
+        .dashboard.active {
+            display: block;
+        }
+
+        .dashboard-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .dashboard-nav {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .dashboard-nav button {
+            flex: 1;
+            padding: 1rem;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .dashboard-nav button.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .dashboard-content {
+            padding: 2rem;
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-closed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .file-upload {
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .file-upload:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        /* Tables */
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .table th,
+        .table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        /* Login Form */
+        .login-form {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            margin: 2rem auto;
+        }
+
+        .login-form h2 {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #333;
+        }
+
+        .role-selector {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .role-card {
+            padding: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .role-card:hover,
+        .role-card.selected {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .role-card i {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: #667eea;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .dashboard-nav {
+                flex-direction: column;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        /* Notification System */
+        .notification {
+            position: fixed;
+            top: 100px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            color: white;
+            font-weight: 500;
+            z-index: 1001;
+            transform: translateX(400px);
+            transition: transform 0.3s;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background: #28a745;
+        }
+
+        .notification.error {
+            background: #dc3545;
+        }
+
+        .notification.info {
+            background: #17a2b8;
+        }
+
+        /* Loading Spinner */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <nav class="nav">
+            <a href="#" class="logo">
+                <i class="fas fa-gavel"></i> ProcureGov
+            </a>
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#tenders">Tenders</a></li>
+                <li><a href="#suppliers">Suppliers</a></li>
+                <li><a href="#reports">Reports</a></li>
+                <li><a href="#help">Help</a></li>
+            </ul>
+            <div class="auth-buttons">
+                <a href="#" class="btn btn-secondary" onclick="showLogin()">Login</a>
+                <a href="#" class="btn btn-primary" onclick="showRegister()">Register</a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Hero Section -->
+            <section class="hero" id="home">
+                <h1>Transparent E-Procurement Platform</h1>
+                <p>Streamline your procurement process with our secure, audit-ready platform</p>
+                <div class="auth-buttons">
+                    <a href="#" class="btn btn-primary" onclick="showLogin()">Get Started</a>
+                    <a href="#" class="btn btn-secondary" onclick="showPublicTenders()">Browse Tenders</a>
+                </div>
+            </section>
+
+            <!-- Login Form -->
+            <div class="login-form" id="loginForm" style="display: none;">
+                <h2>Login to ProcureGov</h2>
+                <div class="role-selector">
+                    <div class="role-card" onclick="selectRole('admin')">
+                        <i class="fas fa-user-shield"></i>
+                        <div>Admin</div>
+                    </div>
+                    <div class="role-card" onclick="selectRole('buyer')">
+                        <i class="fas fa-shopping-cart"></i>
+                        <div>Buyer</div>
+                    </div>
+                    <div class="role-card" onclick="selectRole('supplier')">
+                        <i class="fas fa-truck"></i>
+                        <div>Supplier</div>
+                    </div>
+                    <div class="role-card" onclick="selectRole('evaluator')">
+                        <i class="fas fa-clipboard-check"></i>
+                        <div>Evaluator</div>
+                    </div>
+                </div>
+                <form onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                        Login
+                    </button>
+                </form>
+            </div>
+
+            <!-- Dashboard -->
+            <div class="dashboard" id="dashboard">
+                <div class="dashboard-header">
+                    <h2 id="dashboardTitle">Welcome to ProcureGov</h2>
+                    <p id="dashboardSubtitle">Manage your procurement activities</p>
+                </div>
+                
+                <div class="dashboard-nav">
+                    <button class="nav-btn active" onclick="showDashboardSection('overview')">
+                        <i class="fas fa-home"></i> Overview
+                    </button>
+                    <button class="nav-btn" onclick="showDashboardSection('tenders')">
+                        <i class="fas fa-file-contract"></i> Tenders
+                    </button>
+                    <button class="nav-btn" onclick="showDashboardSection('suppliers')">
+                        <i class="fas fa-users"></i> Suppliers
+                    </button>
+                    <button class="nav-btn" onclick="showDashboardSection('reports')">
+                        <i class="fas fa-chart-bar"></i> Reports
+                    </button>
+                    <button class="nav-btn" onclick="showDashboardSection('audit')">
+                        <i class="fas fa-search"></i> Audit
+                    </button>
+                </div>
+
+                <div class="dashboard-content">
+                    <!-- Overview Section -->
+                    <div class="dashboard-section" id="overview">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-number">127</div>
+                                <div class="stat-label">Active Tenders</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">2,341</div>
+                                <div class="stat-label">Registered Suppliers</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">$45M</div>
+                                <div class="stat-label">Total Contract Value</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">89%</div>
+                                <div class="stat-label">Award Rate</div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Recent Activity</h3>
+                            </div>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Activity</th>
+                                        <th>Tender ID</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2025-01-05</td>
+                                        <td>New tender published</td>
+                                        <td>TND-2025-001</td>
+                                        <td><span class="status-badge status-active">Active</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>2025-01-04</td>
+                                        <td>Bid submission received</td>
+                                        <td>TND-2024-099</td>
+                                        <td><span class="status-badge status-pending">Pending</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>2025-01-03</td>
+                                        <td>Contract awarded</td>
+                                        <td>TND-2024-098</td>
+                                        <td><span class="status-badge status-closed">Closed</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tenders Section -->
+                    <div class="dashboard-section" id="tenders" style="display: none;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Tender Management</h3>
+                                <button class="btn btn-primary" onclick="showCreateTender()">
+                                    <i class="fas fa-plus"></i> Create New Tender
+                                </button>
+                            </div>
+                            
+                            <div class="form-group">
+                                <input type="text" class="form-control" placeholder="Search tenders..." 
+                                       onkeyup="filterTenders(this.value)">
+                            </div>
+
+                            <table class="table" id="tendersTable">
+                                <thead>
+                                    <tr>
+                                        <th>Tender ID</th>
+                                        <th>Title</th>
+                                        <th>Category</th>
+                                        <th>Value</th>
+                                        <th>Deadline</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>TND-2025-001</td>
+                                        <td>IT Infrastructure Upgrade</td>
+                                        <td>Technology</td>
+                                        <td>$250,000</td>
+                                        <td>2025-02-15</td>
+                                        <td><span class="status-badge status-active">Active</span></td>
+                                        <td>
+                                            <button class="btn btn-secondary" onclick="viewTender('TND-2025-001')">View</button>
+                                            <button class="btn btn-primary" onclick="editTender('TND-2025-001')">Edit</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>TND-2024-099</td>
+                                        <td>Office Supplies Procurement</td>
+                                        <td>General</td>
+                                        <td>$45,000</td>
+                                        <td>2025-01-20</td>
+                                        <td><span class="status-badge status-pending">Evaluation</span></td>
+                                        <td>
+                                            <button class="btn btn-secondary" onclick="viewTender('TND-2024-099')">View</button>
+                                            <button class="btn btn-primary" onclick="evaluateTender('TND-2024-099')">Evaluate</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Suppliers Section -->
+                    <div class="dashboard-section" id="suppliers" style="display: none;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Supplier Management</h3>
+                                <button class="btn btn-primary" onclick="showSupplierPrequalification()">
+                                    <i class="fas fa-user-plus"></i> Prequalify Suppliers
+                                </button>
+                            </div>
+
+                            <div class="form-group">
+                                <input type="text" class="form-control" placeholder="Search suppliers..." 
+                                       onkeyup="filterSuppliers(this.value)">
+                            </div>
+
+                            <table class="table" id="suppliersTable">
+                                <thead>
+                                    <tr>
+                                        <th>Supplier ID</th>
+                                        <th>Company Name</th>
+                                        <th>Category</th>
+                                        <th>Registration Date</th>
+                                        <th>Status</th>
+                                        <th>Rating</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>SUP-001</td>
+                                        <td>TechCorp Solutions</td>
+                                        <td>Technology</td>
+                                        <td>2024-01-15</td>
+                                        <td><span class="status-badge status-active">Approved</span></td>
+                                        <td>⭐⭐⭐⭐⭐</td>
+                                        <td>
+                                            <button class="btn btn-secondary" onclick="viewSupplier('SUP-001')">View</button>
+                                            <button class="btn btn-primary" onclick="editSupplier('SUP-001')">Edit</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>SUP-002</td>
+                                        <td>BuildRight Construction</td>
+                                        <td>Construction</td>
+                                        <td>2024-02-20</td>
+                                        <td><span class="status-badge status-pending">Pending</span></td>
+                                        <td>⭐⭐⭐⭐</td>
+                                        <td>
+                                            <button class="btn btn-secondary" onclick="viewSupplier('SUP-002')">View</button>
+                                            <button class="btn btn-primary" onclick="approveSupplier('SUP-002')">Approve</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Reports Section -->
+                    <div class="dashboard-section" id="reports" style="display: none;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Analytics & Reports</h3>
+                            </div>
+                            
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-number">95%</div>
+                                    <div class="stat-label">Tender Completion Rate</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-number">14</div>
+                                    <div class="stat-label">Avg. Days to Award</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-number">4.2</div>
+                                    <div class="stat-label">Avg. Bids per Tender</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-number">78%</div>
+                                    <div class="stat-label">Supplier Satisfaction</div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Generate Report</label>
+                                <select class="form-control" onchange="generateReport(this.value)">
+                                    <option value="">Select Report Type</option>
+                                    <option value="tender-performance">Tender Performance</option>
+                                    <option value="supplier-analytics">Supplier Analytics</option>
+                                    <option value="procurement-summary">Procurement Summary</option>
+                                    <option value="compliance-report">Compliance Report</option>
+                                </select>
+                            </div>
+
+                            <div class="card">
+                                <h4>Recent Reports</h4>
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Report Name</th>
+                                            <th>Generated Date</th>
+                                            <th>Type</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>Q4 2024 Procurement Summary</td>
+                                            <td>2025-01-01</td>
+                                            <td>Summary</td>
+                                            <td>
+                                                <button class="btn btn-secondary" onclick="downloadReport('Q4-2024')">
+                                                    <i class="fas fa-download"></i> Download
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audit Section -->
+                    <div class="dashboard-section" id="audit" style="display: none;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Audit Trail</h3>
+                            </div>
+                            
+                            <div class="form-group">
+                                <input type="text" class="form-control" placeholder="Search audit logs..." 
+                                       onkeyup="filterAuditLogs(this.value)">
+                            </div>
+
+                            <table class="table" id="auditTable">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>User</th>
+                                        <th>Action</th>
+                                        <th>Resource</th>
+                                        <th>IP Address</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2025-01-05 10:30:15</td>
+                                        <td>john.doe@gov.ke</td>
+                                        <td>CREATE_TENDER</td>
+                                        <td>TND-2025-001</td>
+                                        <td>192.168.1.100</td>
+                                        <td><span class="status-badge status-active">Success</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>2025-01-05 09:15:22</td>
+                                        <td>mary.smith@techcorp.com</td>
+                                        <td>SUBMIT_BID</td>
+                                        <td>TND-2024-099</td>
+                                        <td>41.90.23.45</td>
+                                        <td><span class="status-badge status-active">Success</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>2025-01-04 16:45:30</td>
+                                        <td>admin@procuregov.ke</td>
+                                        <td>APPROVE_SUPPLIER</td>
+                                        <td>SUP-003</td>
+                                        <td>192.168.1.1</td>
+                                        <td><span class="status-badge status-active">Success</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Loading...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Notification Container -->
+    <div id="notification" class="notification"></div>
+
+    <script>
+        // Global state management
+        let currentUser = null;
+        let currentRole = '';
+        let currentDashboardSection = 'overview';
+
+        // Mock data
+        const mockData = {
+            users: {
+                'admin@procuregov.ke': { role: 'admin', name: 'System Administrator' },
+                'buyer@procuregov.ke': { role: 'buyer', name: 'Procurement Officer' },
+                'supplier@techcorp.com': { role: 'supplier', name: 'TechCorp Solutions' },
+                'evaluator@procuregov.ke': { role: 'evaluator', name: 'Evaluation Panel' }
+            },
+            tenders: [
+                {
+                    id: 'TND-2025-001',
+                    title: 'IT Infrastructure Upgrade',
+					category: 'Technology',
+					value: 250000,
+					deadline: '2025-02-15',
+					status: 'active'
+				},
+				{
+					id: 'TND-2024-099',
+					title: 'Office Supplies Procurement',
+					category: 'Office',
+					value: 150000,
+					deadline: '2024-12-01',
+					status: 'active'
+				},
+				{
+					id: 'TND-2024-098',
+					title: 'Vehicle Maintenance Services',
+					category: 'Transport',
+					value: 50000,
+					deadline: '2024-11-20',
+					status: 'closed'
+				}
+			],
+			suppliers: [
+				{
+					id: 'SUP-001',
+					name: 'TechCorp Solutions',
+					category: 'Technology',
+					registrationDate: '2024-01-15',
+					status: 'approved',
+					rating: 5
+				},
+				{
+					id: 'SUP-002',
+					name: 'BuildRight Construction',
+					category: 'Construction',
+					registrationDate: '2024-02-20',
+					status: 'pending',
+					rating: 4
+				}
+			],
+			auditLogs: [
+				{
+					timestamp: '2025-01-05 10:30:15',
+					user: 'mary.smith@techcorp.com',
+					action: 'SUBMIT_BID',
+					tenderId: 'TND-2024-099',
+					ipAddress: '41.90.23.45',
+					status: 'Success'
+				},
+				{
+					timestamp: '2025-01-04 16:45:30',
+					user: 'admin@procuregov.ke',
+					action: 'APPROVE_SUPPLIER',
+					tenderId: 'SUP-003',
+					ipAddress: '192.168.1.1',
+					status: 'Success'
+				}
+			]
+		};
+
+		// Function to simulate user login
+		function loginUser(email) {
+			const user = mockData.users[email];
+			if (user) {
+				currentUser = email;
+				currentRole = user.role;
+				updateUIForRole();
+			} else {
+				showNotification('Login failed. Please check your credentials.');
+			}
+		}
+
+		// Function to update the UI based on user role
+		function updateUIForRole() {
+			const adminSection = document.getElementById('admin-section');
+			const buyerSection = document.getElementById('buyer-section');
+			const supplierSection = document.getElementById('supplier-section');
+			const evaluatorSection = document.getElementById('evaluator-section');
+
+			adminSection.style.display = currentRole === 'admin' ? 'block' : 'none';
+			buyerSection.style.display = currentRole === 'buyer' ? 'block' : 'none';
+			supplierSection.style.display = currentRole === 'supplier' ? 'block' : 'none';
+			evaluatorSection.style.display = currentRole === 'evaluator' ? 'block' : 'none';
+		}
+
+		// Function to show notifications
+		function showNotification(message) {
+			const notification = document.getElementById('notification');
+			notification.textContent = message;
+			notification.classList.add('show');
+			setTimeout(() => {
+				notification.classList.remove('show');
+			}, 3000);
+		}
+	</script>
+</body>
+</html>

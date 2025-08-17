@@ -1,0 +1,113 @@
+tags:
+  - auth
+summary: Register a new consumer
+description: Endpoint for registering a new consumer with the system.
+parameters:
+  - in: body
+    name: consumer
+    required: true
+    schema:
+      type: object
+      properties:
+        first_name:
+          type: string
+          example: John
+        last_name:
+          type: string
+          example: Doe
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+        school:
+          type: string
+          example: University of Example
+        password:
+          type: string
+          format: password
+          example: securepassword123
+responses:
+  "201":
+    description: Consumer registered successfully
+    schema:
+      type: object
+      properties:
+        message:
+          type: string
+          example: User registered successfully
+        username:
+          type: string
+          example: John
+  "400":
+    description: Bad request, missing fields or invalid data
+    schema:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Missing email or password
+  "409":
+    description: Conflict, email already exists
+    schema:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Email already exists
+  "500":
+    description: Internal server error
+    schema:
+      type: object
+      properties:
+        message:
+          type: string
+          example: An unexpected error occurred
+        details:
+          type: string
+          example: Error details if available
+definitions:
+  Consumer:
+    type: object
+    properties:
+      id:
+        type: integer
+        example: 1
+      first_name:
+        type: string
+        example: John
+      last_name:
+        type: string
+        example: Doe
+      email:
+        type: string
+        format: email
+        example: john.doe@example.com
+      school:
+        type: string
+        example: University of Example
+      password:
+        type: string
+        format: password
+        example: securepassword123
+      created_at:
+        type: string
+        format: date-time
+        example: "2023-10-01T12:00:00Z"
+      updated_at:
+        type: string
+        format: date-time
+        example: "2023-10-01T12:00:00Z"
+      is_verified:
+        type: boolean
+        example: false
+      is_active:
+        type: boolean
+        example: true
+      is_deleted:
+        type: boolean
+        example: false
+      roles:
+        type: array
+        items:
+          type: string
+        example: ["consumer"]

@@ -1,131 +1,211 @@
 import os
-from flask_appbuilder.security.manager import AUTH_DB  # type: ignore
-import cloudinary  # type: ignore
 import dotenv
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 dotenv.load_dotenv(os.path.join(basedir, ".env"))
 
-cloudinary.config(
-    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME') or "your_cloud_name",
-    api_key=os.environ.get('CLOUDINARY_API_KEY') or "your_api_key",
-    api_secret=os.environ.get('CLOUDINARY_API_SECRET') or "your_api_secret",
-    secure=True,
-)
-
-
-# Your App secret key
-SECRET_KEY = "TheQuickBrownFoxJumpedOverALazyDog$$1305"
-
-JWT_TOKEN_LOCATION = ['cookies']
-JWT_COOKIE_SECURE = True  # Only if using HTTPS
-JWT_ACCESS_COOKIE_NAME = 'access_token'
-JWT_COOKIE_SAMESITE = 'None'
-JWT_COOKIE_CSRF_PROTECT = False
-
-DB_HOST=os.environ.get('DB_HOST') or "localhost"
-DB_USER=os.environ.get('DB_USER') or "root"
-DB_PASSWORD=os.environ.get('DB_PASSWORD') or "root"
-DB_NAME=os.environ.get('DB_NAME') or "studentxdev"
-DB_PORT=os.environ.get('DB_PORT') or "3306"
-
-# The SQLAlchemy connection string.
-SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-print(f"Configured database to connect to: {DB_HOST}:{DB_PORT} as {DB_USER} for db {DB_NAME}")
-# SQLALCHEMY_DATABASE_URI = "postgresql://neondb_owner:npg_01iKQobLpROc@ep-quiet-sound-abbpuu6y-pooler.eu-west-2.aws.neon.tech/studentx?sslmode=require"
-SQLALCHEMY_TRACK_MODIFICATIONS = False
-
-# SQLALCHEMY_DATABASE_URI = 'mysql://myapp@localhost/myapp'
-# SQLALCHEMY_DATABASE_URI = 'postgresql://root:password@localhost/myapp'
-
-# Flask-WTF flag for CSRF
-CSRF_ENABLED = True
-
-# ------------------------------
-# GLOBALS FOR APP Builder
-# ------------------------------
-# Uncomment to setup Your App name
-APP_NAME = "StudentX"
-
-# Uncomment to setup Setup an App icon
-# APP_ICON = "static/img/logo.jpg"
-
-# ----------------------------------------------------
-# AUTHENTICATION CONFIG
-# ----------------------------------------------------
-# The authentication type
-# AUTH_OID : Is for OpenID
-# AUTH_DB : Is for database (username/password()
-# AUTH_LDAP : Is for LDAP
-# AUTH_REMOTE_USER : Is for using REMOTE_USER from web server
-AUTH_TYPE = AUTH_DB
-
-# Uncomment to setup Full admin role name
-# AUTH_ROLE_ADMIN = 'Admin'
-
-# Uncomment to setup Public role name, no authentication needed
-# AUTH_ROLE_PUBLIC = 'Public'
-
-# Will allow user self registration
-# AUTH_USER_REGISTRATION = True
-
-# The default user self registration role
-# AUTH_USER_REGISTRATION_ROLE = "Public"
-
-# When using LDAP Auth, setup the ldap server
-# AUTH_LDAP_SERVER = "ldap://ldapserver.new"
-
-# Uncomment to setup OpenID providers example for OpenID authentication
-# OPENID_PROVIDERS = [
-#    { 'name': 'Yahoo', 'url': 'https://me.yahoo.com' },
-#    { 'name': 'AOL', 'url': 'http://openid.aol.com/<username>' },
-#    { 'name': 'Flickr', 'url': 'http://www.flickr.com/<username>' },
-#    { 'name': 'MyOpenID', 'url': 'https://www.myopenid.com' }]
-# ---------------------------------------------------
-# Babel config for translations
-# ---------------------------------------------------
-# Setup default language
-BABEL_DEFAULT_LOCALE = "en"
-# Your application default translation path
-BABEL_DEFAULT_FOLDER = "translations"
-# The allowed translation for you app
-LANGUAGES = {
-    "en": {"flag": "gb", "name": "English"},
-    "pt": {"flag": "pt", "name": "Portuguese"},
-    "pt_BR": {"flag": "br", "name": "Pt Brazil"},
-    "es": {"flag": "es", "name": "Spanish"},
-    "de": {"flag": "de", "name": "German"},
-    "zh": {"flag": "cn", "name": "Chinese"},
-    "ru": {"flag": "ru", "name": "Russian"},
-    "pl": {"flag": "pl", "name": "Polish"},
+env_file = {
+    'default': os.path.join(basedir, '.env'),
+    'development': os.path.join(basedir, '.env.dev'),
+    'production': os.path.join(basedir, '.env'),
+    'testing': os.path.join(basedir, '.env.test')
 }
-# ---------------------------------------------------
-# Image and file configuration
-# ---------------------------------------------------
-# The file upload folder, when using models with files
-UPLOAD_FOLDER = basedir + "/app/static/uploads/"
 
-# The image upload folder, when using models with images
-IMG_UPLOAD_FOLDER = basedir + "/app/static/uploads/"
 
-# The image upload url, when using models with images
-IMG_UPLOAD_URL = "/static/uploads/"
-# Setup image size default is (300, 200, True)
-# IMG_SIZE = (300, 200, True)
+def save_config_from_input(display_text, config_name):
+    """
+    Save a configuration setting to the .env file.
+    """
+    value = input(display_text).rstrip()
+    os.environ[config_name] = value
+    return value
 
-# Theme configuration
-# these are located on static/appbuilder/css/themes
-# you can create your own and easily use them placing them on the same dir structure to override
-# APP_THEME = "bootstrap-theme.css"  # default bootstrap
-# APP_THEME = "cerulean.css"
-# APP_THEME = "amelia.css"
-# APP_THEME = "cosmo.css"
-# APP_THEME = "cyborg.css"
-# APP_THEME = "flatly.css"
-# APP_THEME = "journal.css"
-# APP_THEME = "readable.css"
-# APP_THEME = "simplex.css"
-# APP_THEME = "slate.css"
-# APP_THEME = "spacelab.css"
-# APP_THEME = "united.css"
-# APP_THEME = "yeti.css"
+
+class Config:
+    """
+    Configuration class for the StudentX application.
+    """
+    # Application configuration
+    APP_NAME = "StudentX"
+    SECRET_KEY = "TheQuickBrownFoxJumpedOverALazyDog$$1305"
+    SECURITY_PASSWORD_SALT = "Stvd3ntXPa$$wordSa1T"
+
+    FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://studentx.co.ke")
+    BACKEND_URL = os.environ.get("BACKEND_URL", "https://api.studentx.co.ke")
+
+    JWT_TOKEN_LOCATION = ['cookies']
+    JWT_COOKIE_SECURE = True  # Only if using HTTPS
+    JWT_ACCESS_COOKIE_NAME = 'access_token'
+    JWT_COOKIE_SAMESITE = 'None'
+    JWT_COOKIE_CSRF_PROTECT = False
+    JWT_ACCESS_CSRF_HEADER_NAME = 'X-CSRF-Token'
+    JWT_ACCESS_CSRF_FIELD_NAME = 'csrf_token'
+    JWT_REFRESH_CSRF_HEADER_NAME = 'X-CSRF-Token'
+    JWT_REFRESH_CSRF_FIELD_NAME = 'csrf_token'
+
+    # Mail connection configuration options
+    MAIL_BACKEND = "smtp"
+    MAIL_SERVER = "studentx.co.ke"
+    MAIL_PORT = 465
+    MAIL_USE_TLS = False
+    MAIL_USE_SSL = True
+    MAIL_TIMEOUT = None
+
+    # Mail Credentials Settings
+    MAIL_DEFAULT_SENDER = "StudentX <info@studentx.co.ke>"
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "info@studentx.co.ke")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "wxD(t@494F$N")
+
+    # Administrator Mail Settings
+    ADMINISTRATOR_SENDER = "Administrator <admin@jisortublow.co.ke>"
+    ADMINISTRATOR_MAIL = os.environ.get(
+        "ADMINISTRATOR_MAIL", "info@jisortublow.co.ke"
+    )
+
+    # Database configuration
+    DB_HOST = os.environ.get('DB_HOST') or save_config_from_input(
+        f"Enter your database host (default: localhost): ", 'DB_HOST') or "localhost"
+    # Default values for database credentials
+    DB_USER = os.environ.get('DB_USER') or save_config_from_input(
+        f"Enter your database user (default: {APP_NAME.lower()}_dev_user): ", 'DB_USER') or f"{APP_NAME.lower()}_dev_user"
+    # Default values for database password
+    DB_PASSWORD = os.environ.get('DB_PASSWORD') or save_config_from_input(
+        f"Enter your database password (default: {APP_NAME.lower()}_dev_password): ", 'DB_PASSWORD') or f"{APP_NAME.lower()}_dev_password"
+    DB_NAME = os.environ.get('DB_NAME') or save_config_from_input(
+        f"Enter your database name (default: {APP_NAME.lower()}_dev): ", 'DB_NAME') or f"{APP_NAME.lower()}_dev"
+    # Default port for MySQL
+    DB_PORT = os.environ.get('DB_PORT') or save_config_from_input(
+        f"Enter your database port (default: 3306): ", 'DB_PORT') or "3306"
+
+    # SQLAlchemy engine options
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        # Optimal for most web apps (reduced from 10)
+        'pool_size': 8,
+        'pool_recycle': 300,         # 5 minutes (matches wait_timeout)
+        'pool_pre_ping': True,       # Essential for stability
+        'max_overflow': 8,           # Matches pool_size (reduced from 20)
+        'pool_timeout': 10,          # Wait max 10 sec for connection
+        'pool_use_lifo': True,       # Better performance for web apps
+        'isolation_level': 'READ COMMITTED'  # Better performance than REPEATABLE READ
+    }
+    # The SQLAlchemy connection string.
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Flask-WTF flag for CSRF
+    # CSRF_ENABLED = True
+
+
+class DevelopmentConfig(Config):
+    """
+    Development configuration class.
+    Inherits from Config and can override specific settings for development.
+    """
+    print("Loading DevelopmentConfig...")
+    DEBUG = True
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
+        f"mysql+pymysql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}"
+    SQLALCHEMY_ECHO = False  # Enable SQL query logging for debugging
+    LOG_FILE = 'app_dev.log'
+    LOG_FILE_MODE = 'w'
+
+    @staticmethod
+    def init_app(app):
+        print("Initializing DevelopmentConfig...")
+        if os.path.exists(env_file['development']):
+            app.logger.info(
+                f"Loading environment variables from {os.path.basename(env_file['development'])}.")
+            dotenv.load_dotenv(env_file['development'])
+        elif os.path.exists(env_file['default']):
+            app.logger.warning(
+                f"Development env file not found: {os.path.basename(env_file['development'])}. Defaulting to {os.path.basename(env_file['default'])}.")
+            dotenv.load_dotenv(env_file['default'])
+        else:
+            app.logger.warning("No env file found. Using default settings.")
+            dotenv.load_dotenv(env_file['default'])
+
+
+class ProductionConfig(Config):
+    """
+    Production configuration class.
+    Inherits from Config and can override specific settings for production.
+    """
+    print("Loading ProductionConfig...")
+    DEBUG = False
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
+        f"mysql+pymysql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}"
+    SQLALCHEMY_ECHO = False  # Disable SQL query logging in production
+    LOG_FILE = 'app_prod.log'
+    LOG_FILE_MODE = 'a'  # Append to log file in production
+
+    @staticmethod
+    def init_app(app):
+        print("Initializing ProductionConfig...")
+        if os.path.exists(env_file['production']):
+            app.logger.info(
+                f"Loading environment variables from {os.path.basename(env_file['production'])}.")
+            dotenv.load_dotenv(env_file['production'])
+        elif os.path.exists(env_file['default']):
+            app.logger.warning(
+                f"Production env file not found: {os.path.basename(env_file['production'])}. Defaulting to {os.path.basename(env_file['default'])}.")
+            dotenv.load_dotenv(env_file['default'])
+        else:
+            app.logger.warning("No env file found. Using default settings.")
+            dotenv.load_dotenv(env_file['default'])
+
+
+class TestingConfig(Config):
+    """
+    Testing configuration class.
+    Inherits from Config and can override specific settings for testing.
+    """
+    print("Loading TestingConfig...")
+    TESTING = True
+    # Use in-memory SQLite database for tests
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    WTF_CSRF_ENABLED = False  # Disable CSRF protection for testing
+    LOG_FILE = 'app_test.log'
+    LOG_FILE_MODE = 'w'  # Write to log file in testing mode
+
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def init_app(app):
+        """
+        Initialize the application with testing-specific settings.
+        """
+        TestingConfig.TEST_DB_NAME = os.environ.get('TEST_DB_NAME') or save_config_from_input(
+            f"Enter your test database name (default: {Config.APP_NAME.lower()}_test): ", 'TEST_DB_NAME') or f"{Config.APP_NAME.lower()}_test"
+
+        # Default values for test database credentials
+        TestingConfig.TEST_DB_USER = os.environ.get('TEST_DB_USER') or save_config_from_input(
+            f"Enter your test database user (default: {Config.APP_NAME.lower()}_test_user): ", 'TEST_DB_USER') or f"{Config.APP_NAME.lower()}_test_user"
+        TestingConfig.TEST_DB_PASSWORD = os.environ.get(
+            'TEST_DB_PASSWORD') or save_config_from_input(
+            f"Enter your test database password (default: {Config.APP_NAME.lower()}_test_password): ", 'TEST_DB_PASSWORD') or f"{Config.APP_NAME.lower()}_test_password"
+        TestingConfig.TEST_DB_HOST = os.environ.get('TEST_DB_HOST') or save_config_from_input(
+            f"Enter your test database host (default: localhost): ", 'TEST_DB_HOST') or "localhost"
+        TestingConfig.TEST_DB_PORT = os.environ.get('TEST_DB_PORT') or save_config_from_input(
+            f"Enter your test database port (default: 3306): ", 'TEST_DB_PORT') or "3306"
+        TestingConfig.SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{TestingConfig.TEST_DB_USER}:{TestingConfig.TEST_DB_PASSWORD}@{TestingConfig.TEST_DB_HOST}:{TestingConfig.TEST_DB_PORT}/{TestingConfig.TEST_DB_NAME}' or \
+            "sqlite:///:test-db"
+        print("Initializing TestingConfig...")
+        if os.path.exists(env_file['testing']):
+            app.logger.info(
+                f"Loading environment variables from {os.path.basename(env_file['testing'])}.")
+            dotenv.load_dotenv(env_file['testing'])
+        elif os.path.exists(env_file['default']):
+            app.logger.warning(
+                f"Testing env file not found: {os.path.basename(env_file['testing'])}. Defaulting to {os.path.basename(env_file['default'])}.")
+            dotenv.load_dotenv(env_file['default'])
+        else:
+            app.logger.warning("No env file found. Using default settings.")
+            dotenv.load_dotenv(env_file['default'])
+
+
+config = {
+    'default': DevelopmentConfig,
+    'development': DevelopmentConfig,
+    'production': ProductionConfig,
+    'testing': TestingConfig
+}

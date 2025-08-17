@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, Text, Enum, DateTime, ForeignKey
 from sqlalchemy.orm import relationship  # type: ignore
 
 from app.models.base_model import BaseModel
-from flask_appbuilder import Model  # type: ignore
+from app import db  # type: ignore
 
 COUPON_STATUS = {
     "ACTIVE": "active",
@@ -11,7 +11,7 @@ COUPON_STATUS = {
 }
 
 
-class Coupon(BaseModel, Model):
+class Coupon(BaseModel, db.Model):
     """
     Coupon model definition.
     """
@@ -19,6 +19,7 @@ class Coupon(BaseModel, Model):
     offer_id = Column(String(64), ForeignKey('offers.id'), nullable=False)
     consumer_id = Column(String(64), ForeignKey(
         'consumers.id'), nullable=False)
+    redemption_location_id = Column(String(64), ForeignKey('stores.id'), nullable=True)
 
     coupon_code = Column(String(64), nullable=False, unique=True)
     redeemed_at = Column(DateTime, nullable=True)
@@ -26,10 +27,12 @@ class Coupon(BaseModel, Model):
     status: Column[Enum] = Column(Enum(*COUPON_STATUS.values()),
                                   nullable=False, default=COUPON_STATUS['ACTIVE'])
     qr_code = Column(String(128), nullable=True, default=None)
+    redeemed_amount = Column(Integer, nullable=True)  # Amount saved in cents
 
     consumer = relationship('Consumer', back_populates='coupons')
     offer = relationship('Offer', back_populates='coupons')
-
+    redemption_location = relationship('Store', back_populates='redeemed_coupons')
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._generate_qr_code()

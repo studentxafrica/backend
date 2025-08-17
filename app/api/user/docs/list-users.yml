@@ -1,0 +1,52 @@
+swagger: "2.0"
+info:
+  title: List Users
+  description: Get a list of all users.
+  version: "1.0.0"
+schemes:
+  - http
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /user/list:
+    get:
+      tags:
+        - user
+      summary: List all users
+      description: Returns a list of users.
+      parameters: []
+      responses:
+        "200":
+          description: A list of users
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/User'
+        "500":
+          description: Internal server error
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+definitions:
+  User:
+    type: object
+    properties:
+      id:
+        type: integer
+      first_name:
+        type: string
+      last_name:
+        type: string
+      email:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time 

@@ -37,7 +37,7 @@ class BaseModel:
             returns json representation of self
         """
         obj_dict = {
-            column.name: getattr(self, column.name)
+            column.name: getattr(self, column.name) if column.name != 'verification_status' else getattr(self, column.name).value
             for column in self.__table__.columns
             if not column.name.startswith('_')
         }

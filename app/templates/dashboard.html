@@ -1,0 +1,175 @@
+{% extends "appbuilder/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Stats Overview -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_consumers }}</div>
+                <div class="stat-label">Total Consumers</div>
+                <div class="text-muted small">+{{ new_consumers }} this month</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_merchants }}</div>
+                <div class="stat-label">Total Merchants</div>
+                <div class="text-muted small">+{{ new_merchants }} this month</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_offers }}</div>
+                <div class="stat-label">Active Offers</div>
+                <div class="text-muted small">+{{ new_offers }} this month</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_coupons }}</div>
+                <div class="stat-label">Total Coupons</div>
+                <div class="text-muted small">{{ redeemed_coupons }} redeemed this month</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity and Statistics -->
+    <div class="row">
+        <!-- Recent Offers -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Recent Offers</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Merchant</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for offer in recent_offers %}
+                                <tr>
+                                    <td>{{ offer.title }}</td>
+                                    <td>{{ offer.merchant.name }}</td>
+                                    <td>
+                                        <span class="badge {% if offer.status == 'active' %}badge-success{% else %}badge-warning{% endif %}">
+                                            {{ offer.status }}
+                                        </span>
+                                    </td>
+                                    <td>{{ offer.created_at.strftime('%Y-%m-%d') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Coupons -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Recent Coupons</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Consumer</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for coupon in recent_coupons %}
+                                <tr>
+                                    <td>{{ coupon.coupon_code }}</td>
+                                    <td>{{ coupon.consumer.email }}</td>
+                                    <td>
+                                        <span class="badge {% if coupon.status == 'redeemed' %}badge-success{% elif coupon.status == 'active' %}badge-primary{% else %}badge-warning{% endif %}">
+                                            {{ coupon.status }}
+                                        </span>
+                                    </td>
+                                    <td>{{ coupon.created_at.strftime('%Y-%m-%d') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Category and Merchant Distribution -->
+    <div class="row">
+        <!-- Category Distribution -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Category Distribution</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Offers</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for category, count in category_stats %}
+                                <tr>
+                                    <td>{{ category }}</td>
+                                    <td>{{ count }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Merchants -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Top Merchants</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Merchant</th>
+                                    <th>Offers</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for merchant, count in merchant_stats %}
+                                <tr>
+                                    <td>{{ merchant }}</td>
+                                    <td>{{ count }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

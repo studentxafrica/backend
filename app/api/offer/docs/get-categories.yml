@@ -1,0 +1,62 @@
+swagger: "2.0"
+info:
+  title: Get Offer Categories
+  description: Get a list of all offer categories
+  version: "1.0.0"
+schemes:
+  - http
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /offer/categories:
+    get:
+      tags:
+        - offer
+      summary: Get categories
+      description: Get a list of all offer categories
+      security:
+        - Bearer: []
+      responses:
+        "200":
+          description: Successfully retrieved categories
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Successfully fetched categories"
+              data:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      example: 1
+                    name:
+                      type: string
+                      example: "Food & Dining"
+                    slug:
+                      type: string
+                      example: "food-dining"
+                    description:
+                      type: string
+                      example: "Restaurants, cafes, and food delivery services"
+                    icon:
+                      type: string
+                      example: "utensils"
+                    created_at:
+                      type: string
+                      format: date-time
+                      example: "2024-03-20T10:00:00Z"
+        "401":
+          description: Unauthorized
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Unauthorized" 

@@ -4,6 +4,7 @@ from app import db
 from app.models.category import Category as Category
 from sqlalchemy.orm import joinedload, subqueryload  # type: ignore
 from typing import List
+from app.utils import roles_required
 
 
 @category.route('/all', methods=['GET'])
@@ -37,19 +38,21 @@ def get_category_by_id(category_id):
 
 
 @category.route('/new', methods=['POST'])
+@roles_required('admin')
 def create_category():
     """
     Create a new category.
     Scenarios:
-                                    - Create a new category
-                                    - Category already exists
-                                    - Missing required fields
+    - Create a new category
+    - Category already exists
+    - Missing required fields
     """
     # Logic to create a new category
     return jsonify({"message": "Create a new category"}), 201
 
 
 @category.route('/<category_id>', methods=['PUT'])
+@roles_required('admin')
 def update_category(category_id):
     """
     Update a category.
@@ -63,6 +66,7 @@ def update_category(category_id):
 
 
 @category.route('/<category_id>', methods=['DELETE'])
+@roles_required('admin')
 def delete_category(category_id):
     """
     Delete a category.

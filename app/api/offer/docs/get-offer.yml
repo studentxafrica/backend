@@ -1,0 +1,105 @@
+tags:
+  - offer
+summary: Get offer by ID
+description: Retrieve a specific offer by its ID
+parameters:
+  - name: id
+    in: path
+    type: integer
+    required: true
+    description: ID of the offer to retrieve
+security:
+  - Bearer: []
+responses:
+  "200":
+    description: Successfully retrieved offer
+    schema:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Successfully fetched offer
+        data:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 1
+            title:
+              type: string
+              example: "Summer Sale"
+            description:
+              type: string
+              example: "Get 50% off on all summer items"
+            slug:
+              type: string
+              example: "summer-sale"
+            coverImage:
+              type: string
+              example: "https://example.com/images/summer-sale.jpg"
+            discountType:
+              type: string
+              example: "percentage"
+            discountValue:
+              type: number
+              example: 50
+            currency:
+              type: string
+              example: "USD"
+            merchant:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  example: 1
+                name:
+                  type: string
+                  example: "Example Store"
+                logo:
+                  type: string
+                  example: "https://example.com/logo.png"
+                website:
+                  type: string
+                  example: "https://example.com"
+            coupons:
+              type: object
+              properties:
+                total:
+                  type: integer
+                  example: 100
+                redeemed:
+                  type: integer
+                  example: 50
+                claimed:
+                  type: integer
+                  example: 75
+            status:
+              type: string
+              example: "active"
+            startDate:
+              type: string
+              format: date-time
+              example: "2024-06-01T00:00:00Z"
+            endDate:
+              type: string
+              format: date-time
+              example: "2024-08-31T23:59:59Z"
+            termsAndConditions:
+              type: string
+              example: "Terms and conditions apply"
+  "401":
+    description: Unauthorized
+    schema:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Unauthorized"
+  "404":
+    description: Offer not found
+    schema:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Offer not found"

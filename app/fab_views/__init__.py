@@ -7,7 +7,16 @@ from app.fab_views.merchant_view import MerchantModelView  # type: ignore
 from app.fab_views.coupon_views import CouponModelView, OfferModelView  # type: ignore
 from app.fab_views.category_views import CategoryModelView  # type: ignore
 from app.fab_views.store_view import StoreModelView  # type: ignore
+from app.fab_views.dashboard import DashboardView
 
+
+appbuilder.add_view(
+    DashboardView,
+    name='Dashboard',
+    category='Dashboard',
+    category_icon='fa fa-dashboard',
+    icon='fa fa-dashboard',
+)
 appbuilder.add_view(
     StoreModelView,
     name='Stores',
@@ -41,9 +50,9 @@ appbuilder.add_view(
 
 appbuilder.add_view(
     CategoryModelView,
-	name='Categories',
-	category_icon='fa fa-tags',
-	icon='fa fa-tag',
+    name='Categories',
+    category_icon='fa fa-tags',
+    icon='fa fa-tag',
 )
 
 appbuilder.add_view(

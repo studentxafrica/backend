@@ -1,19 +1,7 @@
 #!/usr/bin/env python3
 # Module: Error handling for the API
-from flask import Blueprint, jsonify, request
-
-error = Blueprint('error', __name__)
-
-
-@error.app_errorhandler(404)
-def not_found(error):
-    """
-    Handle 404 errors.
-    """
-    return jsonify({
-        "message": "Resource not found (404)",
-        }), 404
-
+from . import error  # type: ignore
+from flask import jsonify, request
 
 @error.app_errorhandler(500)
 def internal_server_error(error):
@@ -24,6 +12,15 @@ def internal_server_error(error):
         "message": f"Internal server error (500): {error.__str__()}",
         "description": "An unexpected error occurred on the server."
         }), 500
+
+@error.app_errorhandler(404)
+def not_found(error):
+    """
+    Handle 404 errors.
+    """
+    return jsonify({
+        "message": "Resource not found (404)",
+        }), 404
 
 
 @error.app_errorhandler(401)

@@ -1,26 +1,25 @@
-/login:
-  post:
-    tags:
-      - auth
-    summary: User login
-    consumes:
-      - application/json
-    parameters:
-      - in: body
-        name: credentials
-        required: true
-        schema:
-          type: object
-          properties:
-            email:
-              type: string
-            password:
-              type: string
-    responses:
-      200:
-        description: Returns a JWT token
-        schema:
-          type: object
-          properties:
-            token:
-              type: string
+post:
+  tags:
+    - auth
+  summary: User login
+  consumes:
+    - application/json
+  parameters:
+    - in: body
+      name: credentials
+      required: true
+      schema:
+        type: object
+        properties:
+          email:
+            type: string
+          password:
+            type: string
+  responses:
+    200:
+      description: Returns a JWT token
+      schema:
+        type: object
+        properties:
+          token:
+            type: string

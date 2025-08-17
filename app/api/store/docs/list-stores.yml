@@ -1,0 +1,52 @@
+swagger: "2.0"
+info:
+  title: List Stores
+  description: Get a list of all stores (merchants).
+  version: "1.0.0"
+schemes:
+  - http
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /store/list:
+    get:
+      tags:
+        - store
+      summary: List all stores
+      description: Returns a list of stores (merchants).
+      parameters: []
+      responses:
+        "200":
+          description: A list of stores
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Store'
+        "500":
+          description: Internal server error
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+definitions:
+  Store:
+    type: object
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      email:
+        type: string
+      address:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time 

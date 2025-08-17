@@ -1,0 +1,82 @@
+<!-- Verification Reminder Email Template -->
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<title></title>
+	<style>
+		body {
+			font-family: 'Helvetica Neue', Arial, sans-serif;
+			line-height: 1.6;
+			color: #333333;
+			max-width: 600px;
+			margin: 0 auto;
+			padding: 20px;
+		}
+
+		.header {
+			text-align: left;
+			padding: 20px 0;
+			border-bottom: 1px solid #eeeeee;
+		}
+
+		.logo {
+			max-width: 180px;
+		}
+
+		.content {
+			padding: 20px 0;
+		}
+
+		.cta-button {
+			display: block;
+			width: 80%;
+			max-width: 300px;
+			margin: 25px auto;
+			padding: 12px 20px;
+			background-color: #00a870;
+			color: white;
+			text-align: center;
+			text-decoration: none;
+			font-weight: bold;
+			border-radius: 4px;
+		}
+
+		.footer {
+			font-size: 12px;
+			color: #777777;
+			text-align: center;
+			margin-top: 20px;
+		}
+
+		.note {
+			font-size: 12px;
+			color: #ff0000;
+			margin-top: 10px;
+		}
+	</style>
+
+</head>
+
+<body>
+	<div class="content">
+		<h1>Reminder to Verify Your StudentX Account</h1>
+		<p>Hi {{ context.student_name }},</p>
+		<p>We noticed that you haven't verified your StudentX account yet. Please take a moment to complete your profile
+			and verify your student status by clicking the button below:</p>
+		<a href="{{ frontend_url }}/me?tab=verification" class="cta-button">Verify Your Account</a>
+		<p>Thank you for joining StudentX!</p>
+
+	</div>
+	<div class="footer">
+		<p><a href="{{ frontend_url }}/deals">Browse Deals</a> | <a href="{{ frontend_url }}">How It Works</a> |
+			<a href="{{ frontend_url }}/contact">Contact Us</a>
+		</p>
+		<p>© 2024 StudentX. All rights reserved.</p>
+		<p>If you no longer wish to receive these emails, you may <a
+				href="{{ frontend_url }}/unsubscribe">unsubscribe</a>.</p>
+	</div>
+</body>
+
+</html>

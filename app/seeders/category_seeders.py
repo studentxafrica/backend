@@ -53,5 +53,3 @@ def seed_categories():
         category_instance = Category(**category)
         category_instance.save()
 
-
-print("Category seeder completed successfully.")
