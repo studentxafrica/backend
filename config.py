@@ -44,12 +44,12 @@ class Config:
     JWT_REFRESH_CSRF_FIELD_NAME = 'csrf_token'
 
     # Mail connection configuration options
-    MAIL_BACKEND = "smtp"
-    MAIL_SERVER = "studentx.co.ke"
-    MAIL_PORT = 465
-    MAIL_USE_TLS = False
-    MAIL_USE_SSL = True
-    MAIL_TIMEOUT = None
+    MAIL_BACKEND = os.environ.get("MAIL_BACKEND")
+    MAIL_SERVER = os.environ.get("MAIL_SERVER")
+    MAIL_PORT = os.environ.get("MAIL_PORT")
+    MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS")
+    MAIL_USE_SSL = os.environ.get("MAIL_USE_SSL")
+    MAIL_TIMEOUT = os.environ.get("MAIL_TIMEOUT")
 
     # Mail Credentials Settings
     MAIL_DEFAULT_SENDER = "StudentX <info@studentx.co.ke>"
