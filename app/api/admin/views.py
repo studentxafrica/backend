@@ -416,7 +416,10 @@ def request_verification(user_id):
     if not student:
         return jsonify({'success': False, 'message': 'Student not found'}), 404
     if student.verified_at:
-        return jsonify({'success': False, 'message': 'Student already verified'}), 400
+        if student.verification_status == VerificationRequestStatus.PENDING:
+            student.verified_at = None
+        else:
+            return jsonify({'success': False, 'message': 'Student already verified'}), 400
 
     # if student.verification_reminder_sent_on is not None and \
     #         student.verification_reminder_sent_on > datetime.now() - timedelta(days=7):

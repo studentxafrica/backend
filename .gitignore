@@ -8,6 +8,7 @@ wenv
 *.sublime*
 
 .*
+.env
 *.log
 kali-env
 migrations/versions/
