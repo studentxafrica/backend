@@ -8,6 +8,7 @@ from app.models.store import Store as Store
 from app.models.offer import OfferView as OfferView
 from app.models.offer import Tag as Tag
 from app.models.testimonial import Testimonial as Testimonial
+from app.models.user_offer_usage import UserOfferUsage as UserOfferUsage
 from app.models.verification import\
     VerificationRequest as VerificationRequest, \
     VerificationDocument as VerificationDocument, \

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Dict, List
 from sqlalchemy import event, UniqueConstraint  # type: ignore
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, CheckConstraint, Table  # type: ignore
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, CheckConstraint, Table, JSON  # type: ignore
 from sqlalchemy.orm import relationship, validates  # type: ignore
 
 from app.models.base_model import BaseModel
@@ -22,6 +22,13 @@ OFFER_STATUS = {
     "EXPIRED": "expired",
     "SOLD_OUT": "sold_out",
     "SUSPENDED": 'suspended'
+}
+
+USAGE_TYPES = {
+    "SINGLE_USE": "single_use",
+    "MULTI_USE": "multi_use", 
+    "UNLIMITED": "unlimited",
+    "TIERED": "tiered"
 }
 
 offer_tags = Table(
@@ -93,6 +100,14 @@ class Offer(BaseModel, db.Model):
     revenue_generated = Column(Integer, default=0)
     # Average time from claim to redemption in hours
     avg_redemption_time_hours = Column(Integer, nullable=True)
+
+    # New flexible usage system fields
+    usage_type: Column[Enum] = Column(
+        Enum(*USAGE_TYPES.values()),
+        nullable=False, default=USAGE_TYPES["SINGLE_USE"])
+    max_claims_per_user: Column[int] = Column(Integer, nullable=True, default=1)
+    cooldown_period_hours: Column[int] = Column(Integer, nullable=True)
+    tier_progression: Column[Text] = Column(JSON, nullable=True)  # JSON for tiered discount rules
 
     # *One
     merchant: Merchant = relationship('Merchant', back_populates='offers')

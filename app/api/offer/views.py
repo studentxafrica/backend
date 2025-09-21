@@ -56,6 +56,7 @@ def get_offer_by_id(id: str):
             'discountType': offer.discount_type,
             'discountValue': offer.discount_value,
             'currency': offer.currency,
+            'usage_type': offer.usage_type,
             'merchant': {
                 'id': offer.merchant.id,
                 'name': offer.merchant.name,
@@ -102,22 +103,42 @@ def create_coupon(id):
         if not offer:
             return jsonify({"message": "Offer not found"}), 404
 
-        user_coupon: Coupon = db.session.query(Coupon).filter(
-            Coupon.offer_id == offer.id,
-            Coupon.consumer_id == user.id,
-        ).first()
+        # Use new flexible usage system for validation
+        from app.api.offer.usage_helpers import can_user_claim_offer, record_coupon_claim, calculate_tiered_discount
 
-        if user_coupon:
+        can_claim, reason = can_user_claim_offer(user.id, offer.id)
+        if not can_claim:
+            # For single-use offers, check if user already has an active coupon
+            if offer.usage_type == 'single_use':
+                existing_coupon = db.session.query(Coupon).filter(
+                    Coupon.offer_id == offer.id,
+                    Coupon.consumer_id == user.id,
+                    Coupon.status == 'active'
+                ).first()
+
+                if existing_coupon:
+                    return jsonify({
+                        "message": "Coupon already claimed",
+                        "description": reason,
+                        "data": {
+                            'code': existing_coupon.coupon_code,
+                            "qrCode": existing_coupon.qr_code,
+                            'expiryDate': existing_coupon.expiry_date,
+                            'status': existing_coupon.status
+                        }
+                    }), 409
+
             return jsonify({
-                "message": "Coupon already claimed",
-                "description": "You have already claimed a coupon for this offer",
-                "data": {
-                    'code': user_coupon.coupon_code,
-                    "qrCode": user_coupon.qr_code,
-                    'expiryDate': user_coupon.expiry_date,
-                    'status': user_coupon.status
-                }
-            }), 409
+                "message": "Cannot claim coupon",
+                "description": reason
+            }), 400
+
+        # Record the coupon claim in usage tracking
+        usage_record = record_coupon_claim(user.id, offer.id)
+
+        # Calculate tiered discount if applicable
+        discount_info = calculate_tiered_discount(
+            offer, usage_record.usage_count - 1)  # -1 because we just incremented
 
         # Logic to create a coupon for the offer
         coupon_code = generate_coupon_code(offer.id, current_user.id)
@@ -132,12 +153,19 @@ def create_coupon(id):
 
         return jsonify({
             "message": "Coupon created successfully",
-            "description": "You can now use this coupon code to redeem the offer",
+            "description": f"You can now use this coupon code to redeem the offer. This is your {usage_record.usage_count} claim for this offer.",
             "data": {
                 'code': coupon.coupon_code,
                 "qrCode": coupon.qr_code,
                 'expiryDate': coupon.expiry_date,
-                'status': coupon.status
+                'status': coupon.status,
+                'discount': discount_info,
+                'usage_stats': {
+                    'total_claims': usage_record.usage_count,
+                    'total_savings': usage_record.total_savings,
+                    'can_claim_more': usage_record.can_claim_more,
+                    'next_available_claim': usage_record.next_available_claim.isoformat() if usage_record.next_available_claim else None
+                }
             }
         }), 201
     except Exception as e:
@@ -378,7 +406,8 @@ def get_recommended_offers():
         # Execute query
         limit = request.args.get('limit', 50, type=int)
         offset = request.args.get('offset', 0, type=int)
-        recommended_offers: List[Offer] = query.limit(limit).offset(offset).all()
+        recommended_offers: List[Offer] = query.limit(
+            limit).offset(offset).all()
 
         return jsonify({
             "message": "Successfully fetched recommended offers",
@@ -391,6 +420,11 @@ def get_recommended_offers():
                 'discountType': offer.discount_type,
                 'discountValue': offer.discount_value,
                 'currency': offer.currency,
+
+                'usage_type': offer.usage_type,
+                'max_claims_per_user': offer.max_claims_per_user,
+                'cooldown_period_hours': offer.cooldown_period_hours,
+                'tier_progression': offer.tier_progression,
 
                 'redemptionType': offer.redemption_type,
                 'couponLimit': offer.coupon_limit,
@@ -411,6 +445,8 @@ def get_recommended_offers():
             } for offer in recommended_offers]
         }), 200
     except Exception as e:
+        current_app.logger.error(
+            f"Error fetching recommended offers: {str(e)}")
         return jsonify({"message": str(e)}), 500
 
 
@@ -476,7 +512,8 @@ def create_offer():
         data = request.get_json()
         required_fields = [
             'title', 'description', 'slug', 'cover_image', 'discount_type',
-            'discount_value', 'currency', 'coupon_limit', 'redemption_type',
+            'discount_value' if data.get('discount_type') in [
+                'percentage', 'fixed'] else None, 'coupon_limit', 'redemption_type',
             'start_date', 'end_date'
         ]
         if not data:
@@ -490,14 +527,16 @@ def create_offer():
         # Validate required fields
         required_fields = [
             'title', 'description', 'slug', 'cover_image', 'discount_type',
-            'discount_value', 'currency', 'coupon_limit', 'redemption_type',
+            'discount_value' if data.get('discount_type') in [
+                'percentage', 'fixed'] else None, 'currency', 'coupon_limit', 'redemption_type',
             'start_date', 'end_date'
         ]
         optional_fields = [
-            'category_id', 'featured_until', 'highlighted_until', 'terms_and_conditions', 'tags', 'stores'
+            'category_id', 'featured_until', 'highlighted_until', 'terms_and_conditions', 'tags', 'stores',
+            'usage_type', 'max_claims_per_user', 'cooldown_period_hours', 'tier_progression'
         ]
         for field in required_fields:
-            if field not in data or not data[field]:
+            if field is not None and (field not in data or not data[field]):
                 return jsonify({"message": f"Missing required field: {field}"}), 400
         # upload cover image to cloudinary
         import cloudinary.uploader  # type: ignore
@@ -510,6 +549,18 @@ def create_offer():
                 data['cover_image'] = upload_result['secure_url']
         else:
             return jsonify({"message": "Missing required field: cover_image"}), 400
+        # Validate usage type specific fields
+        from app.models.offer import USAGE_TYPES
+        usage_type = data.get('usage_type', USAGE_TYPES["SINGLE_USE"])
+
+        if usage_type not in USAGE_TYPES.values():
+            return jsonify({"message": f"Invalid usage_type. Must be one of: {list(USAGE_TYPES.values())}"}), 400
+
+        # Validate multi-use specific fields
+        if usage_type == USAGE_TYPES["MULTI_USE"]:
+            if not data.get('max_claims_per_user'):
+                return jsonify({"message": "max_claims_per_user is required for multi_use offers"}), 400
+
         # Create the offer instance
         offer = Offer(
             title=data.get('title'),
@@ -524,7 +575,12 @@ def create_offer():
             end_date=datetime.fromisoformat(data.get('end_date')),
             terms_and_conditions=data.get('terms_and_conditions', ''),
             merchant_id=merchant.id,
-            category_id=merchant.category_id
+            category_id=merchant.category_id,
+            # New flexible usage fields
+            usage_type=usage_type,
+            max_claims_per_user=data.get('max_claims_per_user', 1),
+            cooldown_period_hours=data.get('cooldown_period_hours'),
+            tier_progression=data.get('tier_progression')
         )
 
         if data.get('tags'):
@@ -734,4 +790,166 @@ def delete_offer(id):
 
     except Exception as e:
         current_app.logger.error(f"Error deleting offer: {str(e)}")
+        return jsonify({"message": str(e)}), 500
+
+
+@offer.route('/<id>/usage-stats', methods=['GET'])
+@roles_required('consumer')
+def get_offer_usage_stats(id):
+    """
+    Get usage statistics for a specific offer for the current user.
+    """
+    try:
+        user: Consumer = g.user
+        if not user:
+            return jsonify({"message": "Unauthorized"}), 401
+
+        # Check if offer exists
+        offer: Offer = db.session.query(Offer).filter(Offer.id == id).first()
+        if not offer:
+            return jsonify({"message": "Offer not found"}), 404
+
+        from app.api.offer.usage_helpers import get_user_usage_stats, get_next_available_claim_time
+
+        # Get usage stats for this specific offer
+        usage_stats = get_user_usage_stats(user.id, id)
+        next_claim_time = get_next_available_claim_time(user.id, id)
+
+        return jsonify({
+            "message": "Successfully fetched usage statistics",
+            "data": {
+                "offer": {
+                    "id": offer.id,
+                    "title": offer.title,
+                    "usage_type": offer.usage_type,
+                    "max_claims_per_user": offer.max_claims_per_user,
+                    "cooldown_period_hours": offer.cooldown_period_hours
+                },
+                "usage_stats": usage_stats,
+                "next_available_claim": next_claim_time.isoformat() if next_claim_time else None
+            }
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching usage stats: {str(e)}")
+        return jsonify({"message": str(e)}), 500
+
+
+@offer.route('/user/savings-summary', methods=['GET'])
+@roles_required('consumer')
+def get_user_savings_summary():
+    """
+    Get comprehensive savings summary for the current user across all offers.
+    """
+    try:
+        user: Consumer = g.user
+        if not user:
+            return jsonify({"message": "Unauthorized"}), 401
+
+        from app.api.offer.usage_helpers import get_user_usage_stats
+        from app.models.user_offer_usage import UserOfferUsage
+
+        # Get aggregate stats across all offers
+        aggregate_stats = get_user_usage_stats(user.id)
+
+        # Get top offers by savings
+        top_offers = db.session.query(UserOfferUsage).filter(
+            UserOfferUsage.consumer_id == user.id,
+            UserOfferUsage.total_savings > 0
+        ).order_by(UserOfferUsage.total_savings.desc()).limit(5).all()
+
+        top_offers_data = []
+        for usage in top_offers:
+            top_offers_data.append({
+                "offer": {
+                    "id": usage.offer.id,
+                    "title": usage.offer.title,
+                    "merchant_name": usage.offer.merchant.name
+                },
+                "total_savings": usage.total_savings,
+                "usage_count": usage.usage_count,
+                "total_redemptions": usage.total_redemptions
+            })
+
+        # Get recent activity
+        recent_activity = db.session.query(UserOfferUsage).filter(
+            UserOfferUsage.consumer_id == user.id,
+            UserOfferUsage.last_claimed_at != None
+        ).order_by(UserOfferUsage.last_claimed_at.desc()).limit(10).all()
+
+        recent_activity_data = []
+        for usage in recent_activity:
+            recent_activity_data.append({
+                "offer": {
+                    "id": usage.offer.id,
+                    "title": usage.offer.title,
+                    "merchant_name": usage.offer.merchant.name
+                },
+                "last_claimed_at": usage.last_claimed_at.isoformat(),
+                "usage_count": usage.usage_count
+            })
+
+        return jsonify({
+            "message": "Successfully fetched savings summary",
+            "data": {
+                "aggregate_stats": aggregate_stats,
+                "top_offers_by_savings": top_offers_data,
+                "recent_activity": recent_activity_data
+            }
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching savings summary: {str(e)}")
+        return jsonify({"message": str(e)}), 500
+
+
+@offer.route('/<id>/available-claims', methods=['GET'])
+@roles_required('consumer')
+def check_available_claims(id):
+    """
+    Check how many more times a user can claim a specific offer.
+    """
+    try:
+        user: Consumer = g.user
+        if not user:
+            return jsonify({"message": "Unauthorized"}), 401
+
+        # Check if offer exists
+        offer: Offer = db.session.query(Offer).filter(Offer.id == id).first()
+        if not offer:
+            return jsonify({"message": "Offer not found"}), 404
+
+        from app.api.offer.usage_helpers import can_user_claim_offer, get_or_create_user_usage
+
+        can_claim, reason = can_user_claim_offer(user.id, id)
+        usage = get_or_create_user_usage(user.id, id)
+
+        # Calculate remaining claims based on usage type
+        remaining_claims = None
+        if offer.usage_type == 'single_use':
+            remaining_claims = 1 - usage.usage_count if usage.usage_count == 0 else 0
+        elif offer.usage_type == 'multi_use':
+            remaining_claims = max(
+                0, offer.max_claims_per_user - usage.usage_count)
+        elif offer.usage_type == 'unlimited':
+            remaining_claims = "unlimited"
+        elif offer.usage_type == 'tiered':
+            remaining_claims = max(
+                0, offer.max_claims_per_user - usage.usage_count)
+
+        return jsonify({
+            "message": "Successfully checked claim availability",
+            "data": {
+                "can_claim_now": can_claim,
+                "reason": reason if not can_claim else None,
+                "remaining_claims": remaining_claims,
+                "current_usage_count": usage.usage_count,
+                "next_available_claim": usage.next_available_claim.isoformat() if usage.next_available_claim else None,
+                "offer_details": {
+                    "usage_type": offer.usage_type,
+                    "max_claims_per_user": offer.max_claims_per_user,
+                    "cooldown_period_hours": offer.cooldown_period_hours
+                }
+            }
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"Error checking available claims: {str(e)}")
         return jsonify({"message": str(e)}), 500

@@ -1,0 +1,45 @@
+name: Deploy Backend to FTP
+
+on:
+  push:
+    branches: 
+      - master
+    paths:
+      - "/**"
+      - ".github/workflows/deploy.yaml"
+
+jobs:
+  ftp-deploy:
+    name: Deploy Backend via FTP
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Sync files to FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./
+          server-dir: /dev.api.studentx.co.ke/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.claude/**
+            **/node_modules/**
+            **/__pycache__/**
+            **/*.pyc
+            **/.env
+            **/.env.*
+            **/venv/**
+            **/env/**
+            **/.DS_Store
+            **/Thumbs.db
+            **/*.log
+            **/*.sqlite3
+            **/*.db

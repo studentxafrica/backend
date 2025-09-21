@@ -1,5 +1,5 @@
 *.pyc
-app.db
+*.db
 ./tmp
 ./build/*
 .idea
@@ -7,7 +7,12 @@ venv
 wenv
 *.sublime*
 
-.*
+.vscode
+.claude
+__pycache__
+.env*
+*.sqlite3
+*.sqlite
 .env
 *.log
 kali-env
