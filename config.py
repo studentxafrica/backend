@@ -57,9 +57,9 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "wxD(t@494F$N")
 
     # Administrator Mail Settings
-    ADMINISTRATOR_SENDER = "Administrator <admin@jisortublow.co.ke>"
+    ADMINISTRATOR_SENDER = "Administrator <admin@studentx.co.ke>"
     ADMINISTRATOR_MAIL = os.environ.get(
-        "ADMINISTRATOR_MAIL", "info@jisortublow.co.ke"
+        "ADMINISTRATOR_MAIL", "info@studentx.co.ke"
     )
 
     # Database configuration

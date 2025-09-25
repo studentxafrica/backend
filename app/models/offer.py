@@ -81,7 +81,7 @@ class Offer(BaseModel, db.Model):
     currency: Column[str] = Column(String(3), nullable=False)
     redemption_type: Column[Enum] = Column(
         Enum("in-store", "online", "both"), nullable=False, default="both")
-    coupon_limit: Column[int] = Column(Integer, nullable=False, default=1)
+    coupon_limit: Column[int] = Column(Integer, nullable=True, default=0)
     status: Column[Enum] = Column(
         Enum(*OFFER_STATUS.values()),
         nullable=False, default=OFFER_STATUS["ACTIVE"])
