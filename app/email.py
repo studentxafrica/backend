@@ -9,7 +9,7 @@ from mailtrap import Mail, Address, MailtrapClient
 def generate_confirmation_token(email):
     """
     Generate a confirmation token for email verification.
-    
+
     :param email: str - The email address to generate a token for
     :return: str - The generated token
     """
@@ -20,7 +20,7 @@ def generate_confirmation_token(email):
 def confirm_token(token, expiration=3600):
     """
     Confirm an email verification token.
-    
+
     :param token: str - The token to confirm
     :param expiration: int - The maximum age of the token in seconds
     :return: str or None - The email address if valid, None otherwise
@@ -41,7 +41,7 @@ def confirm_token(token, expiration=3600):
 def get_mailtrap_client():
     """
     Get the Mailtrap client instance.
-    
+
     :return: MailtrapClient - The Mailtrap client
     """
     api_token = current_app.config.get('MAILTRAP_API_TOKEN')
@@ -61,9 +61,10 @@ def send_async_email(app, mail_message):
     with app.app_context():
         if app.config.get('TESTING'):
             # In testing mode, log the email instead of sending it
-            app.logger.info(f"[TEST MODE] Email would be sent to: {mail_message.to}")
+            app.logger.info(
+                f"[TEST MODE] Email would be sent to: {mail_message.to}")
             return True
-        
+
         try:
             client = get_mailtrap_client()
             response = client.send(mail_message)
@@ -88,7 +89,7 @@ def send_email(to, subject, template, **kwargs):
     :return thread: Thread - Represents the asynchronous email sending process
     """
     app = current_app._get_current_object()
-    
+
     # Get configuration values for template context
     template_context = {
         'app_name': app.config.get('APP_NAME', 'StudentX'),
@@ -97,17 +98,18 @@ def send_email(to, subject, template, **kwargs):
         'current_year': datetime.now().year,
         **kwargs
     }
-    
+
     # Render the HTML template
     rendered_html = render_template(template + '.html', **template_context)
-    
+
     # Get sender configuration
-    sender_email = app.config.get('MAIL_DEFAULT_SENDER_EMAIL', 'info@studentx.co.ke')
+    sender_email = app.config.get(
+        'MAIL_DEFAULT_SENDER_EMAIL', 'info@studentx.co.ke')
     sender_name = app.config.get('MAIL_DEFAULT_SENDER_NAME', 'StudentX')
-    
+
     # Build recipient list
     recipients = [Address(email=email) for email in to]
-    
+
     # Create Mailtrap Mail object
     mail_message = Mail(
         sender=Address(email=sender_email, name=sender_name),
@@ -138,11 +140,11 @@ def send_email_sync(to, subject, template, **kwargs):
     :return: bool - True if email was sent successfully, False otherwise
     """
     app = current_app._get_current_object()
-    
+
     if app.config.get('TESTING'):
         app.logger.info(f"[TEST MODE] Email would be sent to: {to}")
         return True
-    
+
     # Get configuration values for template context
     template_context = {
         'app_name': app.config.get('APP_NAME', 'StudentX'),
@@ -151,17 +153,18 @@ def send_email_sync(to, subject, template, **kwargs):
         'current_year': datetime.now().year,
         **kwargs
     }
-    
+
     # Render the HTML template
     rendered_html = render_template(template + '.html', **template_context)
-    
+
     # Get sender configuration
-    sender_email = app.config.get('MAIL_DEFAULT_SENDER_EMAIL', 'info@studentx.co.ke')
+    sender_email = app.config.get(
+        'MAIL_DEFAULT_SENDER_EMAIL', 'info@studentx.co.ke')
     sender_name = app.config.get('MAIL_DEFAULT_SENDER_NAME', 'StudentX')
-    
+
     # Build recipient list
     recipients = [Address(email=email) for email in to]
-    
+
     # Create Mailtrap Mail object
     mail_message = Mail(
         sender=Address(email=sender_email, name=sender_name),
@@ -170,7 +173,7 @@ def send_email_sync(to, subject, template, **kwargs):
         html=rendered_html,
         category=app.config.get('APP_NAME', 'StudentX')
     )
-    
+
     try:
         client = get_mailtrap_client()
         response = client.send(mail_message)
