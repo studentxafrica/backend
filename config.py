@@ -27,7 +27,7 @@ class Config:
     """
     # Application configuration
     APP_NAME = "StudentX"
-    SECRET_KEY = "TheQuickBrownFoxJumpedOverALazyDog$$1305"
+    SECRET_KEY = "TheQuickBrownFoxJumpedOverALazyDog$$875867"
     SECURITY_PASSWORD_SALT = "Stvd3ntXPa$$wordSa1T"
 
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://studentx.co.ke")
