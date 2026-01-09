@@ -1,9 +1,15 @@
 from threading import Thread
 from datetime import datetime
+import time
 
 from flask import current_app, render_template
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from mailtrap import Mail, Address, MailtrapClient
+from requests.exceptions import RequestException, SSLError, ConnectionError
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_DELAY_BASE = 1  # Base delay in seconds (will be multiplied exponentially)
 
 
 def generate_confirmation_token(email):
@@ -50,10 +56,46 @@ def get_mailtrap_client():
     return MailtrapClient(token=api_token)
 
 
+def send_with_retry(client, mail_message, app):
+    """
+    Send an email with retry logic and exponential backoff.
+    
+    :param client: MailtrapClient - The Mailtrap client instance
+    :param mail_message: Mail - The Mailtrap Mail object
+    :param app: Flask - The Flask app object for logging
+    :return: tuple - (success: bool, response: any)
+    """
+    last_exception = None
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = client.send(mail_message)
+            return True, response
+        except (SSLError, ConnectionError, RequestException) as e:
+            last_exception = e
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_DELAY_BASE * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                app.logger.warning(
+                    f"Email send attempt {attempt + 1}/{MAX_RETRIES} failed: {e}. "
+                    f"Retrying in {delay}s..."
+                )
+                time.sleep(delay)
+            else:
+                app.logger.error(
+                    f"Email send failed after {MAX_RETRIES} attempts: {e}"
+                )
+        except Exception as e:
+            # Non-retryable error
+            app.logger.error(f"Failed to send email via Mailtrap: {e}")
+            return False, None
+    
+    return False, last_exception
+
+
 def send_async_email(app, mail_message):
     """
     Asynchronously sends an email using Mailtrap SDK within the given Flask
-        app context.
+        app context. Includes retry logic for transient network errors.
 
     :param app: Flask - The Flask app object
     :param mail_message: Mail - The Mailtrap Mail object containing email details
@@ -67,9 +109,10 @@ def send_async_email(app, mail_message):
 
         try:
             client = get_mailtrap_client()
-            response = client.send(mail_message)
-            app.logger.info(f"Email sent successfully: {response}")
-            return True
+            success, response = send_with_retry(client, mail_message, app)
+            if success:
+                app.logger.info(f"Email sent successfully: {response}")
+            return success
         except Exception as e:
             app.logger.error(f"Failed to send email via Mailtrap: {e}")
             return False
@@ -176,9 +219,10 @@ def send_email_sync(to, subject, template, **kwargs):
 
     try:
         client = get_mailtrap_client()
-        response = client.send(mail_message)
-        app.logger.info(f"Email sent successfully: {response}")
-        return True
+        success, response = send_with_retry(client, mail_message, current_app._get_current_object())
+        if success:
+            app.logger.info(f"Email sent successfully: {response}")
+        return success
     except Exception as e:
         app.logger.error(f"Failed to send email via Mailtrap: {e}")
         return False

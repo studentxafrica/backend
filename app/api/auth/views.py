@@ -419,7 +419,7 @@ def verify_merchant_email(merchant_id=None):
 
     from app.email import generate_confirmation_token, send_email
     token = generate_confirmation_token(user.email)
-    confirm_url = f"{os.environ.get('FRONTEND_BASE_URL', 'https://studentx.co.ke')}auth/merchant/confirm-email?token={token}"
+    confirm_url = f"{os.environ.get('FRONTEND_BASE_URL', 'https://studentx.co.ke')}/auth/merchant/confirm-email?token={token}"
     send_email(
         subject="Please confirm your email",
         to=[user.email],
@@ -486,7 +486,7 @@ def reset_password():
     if user:
         try:
             token = generate_confirmation_token(user.email)
-            reset_url = f"{os.environ.get('FRONTEND_BASE_URL', 'https://studentx.co.ke')}auth/user/confirm-reset-password?token={token}"
+            reset_url = f"{os.environ.get('FRONTEND_BASE_URL', 'https://studentx.co.ke')}/auth/user/confirm-reset-password?token={token}"
             from datetime import datetime
             resp = send_email(
                 subject="Reset your password",
