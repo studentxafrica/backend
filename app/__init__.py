@@ -6,13 +6,11 @@ from flask_sqlalchemy import SQLAlchemy  # type: ignore
 from flasgger import Swagger  # type: ignore
 from flask_jwt_extended import JWTManager  # type: ignore
 from flask_cors import CORS  # type: ignore
-from flask_mailman import Mail  # type: ignore
 from flask_migrate import Migrate  # type: ignore
 import cloudinary
 
 db: SQLAlchemy = SQLAlchemy()
 migrate = Migrate()
-mail = Mail()
 swagger = Swagger()
 
 jwt_manager = JWTManager()
@@ -36,7 +34,6 @@ def create_app(config_name='default'):
     print("Initializing extensions...")
     db.init_app(app)
     migrate.init_app(app, db)
-    mail.init_app(app)
     jwt_manager.init_app(app)
     cors.init_app(
         app, supports_credentials=True, resources={r"/api/*": {

@@ -3,8 +3,13 @@ import os
 from logging.config import fileConfig
 
 from flask import current_app
+from app import create_app
 
 from alembic import context
+
+# app = create_app()
+# app.app_context().push()
+
 from config import config as app_config
 
 # this is the Alembic Config object, which provides
@@ -39,7 +44,7 @@ def get_engine_url():
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-config.set_main_option('sqlalchemy.url', get_engine_url())
+# config.set_main_option('sqlalchemy.url', get_engine_url())
 target_db = current_app.extensions['migrate'].db
 
 # other values from the config, defined by the needs of env.py,

@@ -43,18 +43,12 @@ class Config:
     JWT_REFRESH_CSRF_HEADER_NAME = 'X-CSRF-Token'
     JWT_REFRESH_CSRF_FIELD_NAME = 'csrf_token'
 
-    # Mail connection configuration options
-    MAIL_BACKEND = os.environ.get("MAIL_BACKEND")
-    MAIL_SERVER = os.environ.get("MAIL_SERVER")
-    MAIL_PORT = os.environ.get("MAIL_PORT")
-    MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS")
-    MAIL_USE_SSL = os.environ.get("MAIL_USE_SSL")
-    MAIL_TIMEOUT = os.environ.get("MAIL_TIMEOUT")
+    # Mail connection configuration options - Mailtrap SDK
+    MAILTRAP_API_TOKEN = os.environ.get("MAILTRAP_API_TOKEN")
 
-    # Mail Credentials Settings
-    MAIL_DEFAULT_SENDER = "StudentX <info@studentx.co.ke>"
-    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "info@studentx.co.ke")
-    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "wxD(t@494F$N")
+    # Mail Sender Settings
+    MAIL_DEFAULT_SENDER_EMAIL = os.environ.get("MAIL_DEFAULT_SENDER_EMAIL", "info@studentx.co.ke")
+    MAIL_DEFAULT_SENDER_NAME = os.environ.get("MAIL_DEFAULT_SENDER_NAME", "StudentX")
 
     # Administrator Mail Settings
     ADMINISTRATOR_SENDER = "Administrator <admin@studentx.co.ke>"
