@@ -114,9 +114,11 @@ class Offer(BaseModel, db.Model):
     category: Category = relationship('Category', back_populates='offers')
 
     # *Many
-    coupons = relationship('Coupon', back_populates='offer')
+    coupons = relationship('Coupon', back_populates='offer', cascade='all, delete-orphan')
     saved_offers = relationship(
-        'SavedOffer', back_populates='offer')
+        'SavedOffer', back_populates='offer', cascade='all, delete-orphan')
+    views = relationship('OfferView', backref='offer', cascade='all, delete-orphan')
+    user_usage_stats = relationship('UserOfferUsage', backref='offer', cascade='all, delete-orphan')
 
     # Constraints
     __table_args__ = (
@@ -223,7 +225,6 @@ class OfferView(BaseModel, db.Model):
     offer_id = Column(String(64), ForeignKey('offers.id'), nullable=False)
     user_id = Column(String(64), ForeignKey('consumers.id'), nullable=False)
 
-    offer = relationship('Offer', backref='views')
     user = relationship('Consumer', backref='viewed_offers')
 
     __table_args__ = (

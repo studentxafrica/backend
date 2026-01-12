@@ -30,7 +30,7 @@ class UserOfferUsage(BaseModel, db.Model):
     
     # Relationships
     consumer = relationship('Consumer', backref='offer_usage_history')
-    offer = relationship('Offer', backref='user_usage_stats')
+    # offer = relationship('Offer', backref='user_usage_stats')
     
     def __str__(self):
         return f"Usage: {self.consumer.first_name} - {self.offer.title} ({self.usage_count}x)"
