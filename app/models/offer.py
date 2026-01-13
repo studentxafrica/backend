@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Dict, List
 from sqlalchemy import event, UniqueConstraint  # type: ignore
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, CheckConstraint, Table, JSON  # type: ignore
-from sqlalchemy.orm import relationship, validates  # type: ignore
+from sqlalchemy.orm import relationship, validates, Mapped  # type: ignore
 
 from app.models.base_model import BaseModel
 from app.models.merchant import Merchant  # type: ignore
@@ -110,8 +110,8 @@ class Offer(BaseModel, db.Model):
     tier_progression: Column[Text] = Column(JSON, nullable=True)  # JSON for tiered discount rules
 
     # *One
-    merchant: Merchant = relationship('Merchant', back_populates='offers')
-    category: Category = relationship('Category', back_populates='offers')
+    merchant: Mapped[Merchant] = relationship('Merchant', back_populates='offers')
+    category: Mapped[Category] = relationship('Category', back_populates='offers')
 
     # *Many
     coupons = relationship('Coupon', back_populates='offer', cascade='all, delete-orphan')

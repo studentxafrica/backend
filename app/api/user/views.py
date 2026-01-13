@@ -247,9 +247,9 @@ def process_student_verification_request():
             doc.delete()
 
     # Delete documents from Cloudinary if the request is approved or rejected
-    if action in ['approve', 'reject']:
-        import asyncio
-        asyncio.run(delete_cloudinary_documents(request_id))
+    # if action in ['approve', 'reject']:
+    #     import asyncio
+    #     asyncio.run(delete_cloudinary_documents(request_id))
 
     # Create a review entry
     review = VerificationReview(
