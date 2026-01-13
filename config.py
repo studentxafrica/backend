@@ -1,6 +1,5 @@
 import os
 import dotenv
-from sqlalchemy.pool import NullPool, QueuePool
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 dotenv.load_dotenv(os.path.join(basedir, ".env"))
@@ -73,7 +72,16 @@ class Config:
         f"Enter your database port (default: 3306): ", 'DB_PORT') or "3306"
 
     # SQLAlchemy engine options
-    SQLALCHEMY_ENGINE_OPTIONS = {}
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        # Optimal for most web apps (reduced from 10)
+        'pool_size': 8,
+        'pool_recycle': 300,         # 5 minutes (matches wait_timeout)
+        'pool_pre_ping': True,       # Essential for stability
+        'max_overflow': 8,           # Matches pool_size (reduced from 20)
+        'pool_timeout': 10,          # Wait max 10 sec for connection
+        'pool_use_lifo': True,       # Better performance for web apps
+        'isolation_level': 'READ COMMITTED'  # Better performance than REPEATABLE READ
+    }
     # The SQLAlchemy connection string.
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
@@ -86,23 +94,13 @@ class DevelopmentConfig(Config):
     Development configuration class.
     Inherits from Config and can override specific settings for development.
     """
+    print("Loading DevelopmentConfig...")
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
         f"mysql+pymysql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}"
-    SQLALCHEMY_ECHO = False
+    SQLALCHEMY_ECHO = False  # Enable SQL query logging for debugging
     LOG_FILE = 'app_dev.log'
     LOG_FILE_MODE = 'w'
-    
-    # Use QueuePool for development with conservative settings
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        'poolclass': QueuePool,
-        'pool_size': 3,
-        'max_overflow': 2,
-        'pool_timeout': 30,
-        'pool_recycle': 280,
-        'pool_pre_ping': True,
-        'isolation_level': 'READ COMMITTED'
-    }
 
     @staticmethod
     def init_app(app):
@@ -123,22 +121,15 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """
     Production configuration class.
+    Inherits from Config and can override specific settings for production.
     """
+    print("Loading ProductionConfig...")
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
         f"mysql+pymysql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}"
-    SQLALCHEMY_ECHO = False
+    SQLALCHEMY_ECHO = False  # Disable SQL query logging in production
     LOG_FILE = 'app_prod.log'
-    LOG_FILE_MODE = 'a'
-
-    SQLALCHEMY_POOL_SIZE = None,
-    SQLALCHEMY_POOL_TIMEOUT = None
-    
-    # NullPool for production - no pooling arguments allowed
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        'poolclass': NullPool,
-        'isolation_level': 'READ COMMITTED'
-    }
+    LOG_FILE_MODE = 'a'  # Append to log file in production
 
     @staticmethod
     def init_app(app):
@@ -161,10 +152,16 @@ class TestingConfig(Config):
     Testing configuration class.
     Inherits from Config and can override specific settings for testing.
     """
+    print("Loading TestingConfig...")
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    
-    SQLALCHEMY_ENGINE_OPTIONS = {}
+    # Use in-memory SQLite database for tests
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    WTF_CSRF_ENABLED = False  # Disable CSRF protection for testing
+    LOG_FILE = 'app_test.log'
+    LOG_FILE_MODE = 'w'  # Write to log file in testing mode
+
+    def __init__(self):
+        super().__init__()
 
     @staticmethod
     def init_app(app):

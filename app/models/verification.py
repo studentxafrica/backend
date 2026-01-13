@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Enum, DateTime  # type: ignore
-from sqlalchemy.orm import relationship, Mapped  # type: ignore
+from sqlalchemy.orm import relationship  # type: ignore
 from datetime import datetime, timezone
 
 from app.models.base_model import BaseModel
@@ -53,10 +53,10 @@ class VerificationReview(BaseModel, db.Model):
 
     request = relationship(
         'VerificationRequest', back_populates='reviews')
-    reviewer: Mapped[Administrator] = relationship(
+    reviewer: Administrator = relationship(
         'Administrator', back_populates='verification_reviews')
 
-    notes: Mapped[list[VerificationReviewNote]] = relationship(
+    notes: list[VerificationReviewNote] = relationship(
         'VerificationReviewNote', back_populates='review', cascade='all, delete-orphan')
 
 
@@ -75,10 +75,10 @@ class VerificationRequest(BaseModel, db.Model):
         Enum('pending', 'requested', 'approved', 'rejected'),
         nullable=False, default='pending')  # pending, approved, rejected
 
-    documents: Mapped[list[VerificationDocument]] = relationship(
+    documents: list[VerificationDocument] = relationship(
         'VerificationDocument', back_populates='request', cascade='all, delete-orphan')
-    reviews: Mapped[list[VerificationReview]] = relationship(
+    reviews = relationship(
         'VerificationReview', back_populates='request', cascade='all, delete-orphan')
 
-    user: Mapped[Consumer] = relationship(
+    user: Consumer = relationship(
         'Consumer', back_populates='verification_requests')

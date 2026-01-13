@@ -8,7 +8,6 @@ from flask_jwt_extended import JWTManager  # type: ignore
 from flask_cors import CORS  # type: ignore
 from flask_migrate import Migrate  # type: ignore
 import cloudinary
-from sqlalchemy import event
 
 db: SQLAlchemy = SQLAlchemy()
 migrate = Migrate()
@@ -114,32 +113,4 @@ def create_app(config_name='default'):
     app.register_blueprint(coupon_blueprint, url_prefix='/api/v1/coupon')
     app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
 
-    app.config.update({
-        'SQLALCHEMY_POOL_SIZE': None,
-        'SQLALCHEMY_POOL_TIMEOUT': None
-    })
-
-    # Setup connection debugging (replaces @before_first_request)
-    _setup_connection_debugging(app)
-
     return app
-
-
-def _setup_connection_debugging(app):
-    """Debug connection pool usage - called during app creation"""
-    with app.app_context():
-        engine = db.engine
-
-        # Skip for NullPool as it doesn't maintain a pool
-        if hasattr(engine.pool, 'checkedout'):
-            @event.listens_for(engine, "checkout")
-            def receive_checkout(dbapi_connection, connection_record, connection_proxy):
-                app.logger.debug(
-                    f"Connection checked out. Pool size: {engine.pool.checkedout()}")
-
-            @event.listens_for(engine, "checkin")
-            def receive_checkin(dbapi_connection, connection_record):
-                app.logger.debug(
-                    f"Connection returned. Pool size: {engine.pool.checkedout()}")
-        else:
-            app.logger.info("Using NullPool - connection debugging skipped")

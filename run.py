@@ -35,7 +35,10 @@ def shutdown_session(exception=None):
     """
     if exception:
         app.logger.error(f"Exception during request: {exception}")
-        db.session.rollback()
+    global file_handler
+    if file_handler is not None:
+        file_handler.close()
+        file_handler = None
     db.session.remove()
 
 
@@ -45,27 +48,14 @@ def load_user(jwt_header, jwt_payload):
     Load user from JWT token.
     """
     from app.models import Administrator, Consumer, Merchant
-    from sqlalchemy import or_
 
     user_id = jwt_payload['sub']
-    user_type = jwt_payload.get('user_type')  # Add user_type to JWT claims
-    
-    # If user_type is in token, query directly
-    if user_type == 'consumer':
-        return db.session.query(Consumer).filter_by(id=user_id).first()
-    elif user_type == 'merchant':
-        return db.session.query(Merchant).filter_by(id=user_id).first()
-    elif user_type == 'admin':
-        return db.session.query(Administrator).filter_by(id=user_id).first()
-    
-    # Fallback: single query with UNION (still better than 3 separate queries)
     user = db.session.query(Consumer).filter_by(id=user_id).first()
-    if user:
-        return user
-    user = db.session.query(Merchant).filter_by(id=user_id).first()
-    if user:
-        return user
-    return db.session.query(Administrator).filter_by(id=user_id).first()
+    if not user:
+        user = db.session.query(Merchant).filter_by(id=user_id).first()
+    if not user:
+        user = db.session.query(Administrator).filter_by(id=user_id).first()
+    return user
 
 # CLI command to run seeders
 
@@ -174,4 +164,4 @@ def seed(students, merchants, categories, offers, coupons, edit_offers, qrcodes)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=4000, use_reloader=False)
+    app.run(host="0.0.0.0", port=4000)

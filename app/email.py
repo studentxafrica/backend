@@ -82,7 +82,7 @@ def send_with_retry(client, mail_message, app):
                 time.sleep(delay)
             else:
                 app.logger.error(
-                    f"Email send failed after {MAX_RETRIES} attempts: {e} for {mail_message.to}"
+                    f"Email send failed after {MAX_RETRIES} attempts: {e}"
                 )
         except Exception as e:
             # Non-retryable error
