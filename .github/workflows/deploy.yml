@@ -2,7 +2,7 @@ name: Deploy Backend to FTP
 
 on:
   push:
-    branches: 
+    branches:
       - master
     paths:
       - "/**"
@@ -12,7 +12,7 @@ jobs:
   ftp-deploy:
     name: Deploy Backend via FTP
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
