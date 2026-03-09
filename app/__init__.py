@@ -67,7 +67,7 @@ def create_app(config_name='default'):
                 "http://localhost:2211", "http://localhost:8081", "http://localhost:8080",
                 "https://studentx.co.ke", "https://admin.studentx.co.ke", "https://merchant.studentx.co.ke",
                 "https://dev.studentx.co.ke", "https://dev.admin.studentx.co.ke", "https://dev.merchant.studentx.co.ke",
-                "https://58be8aa2849b.ngrok-free.app"
+                "https://staging.studentx.co.ke", "https://staging.admin.studentx.co.ke", "https://staging.merchant.studentx.co.ke",
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": [
