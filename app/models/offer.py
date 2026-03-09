@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from typing import Dict, List
 from sqlalchemy import event, UniqueConstraint  # type: ignore
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, CheckConstraint, Table, JSON  # type: ignore
-from sqlalchemy.orm import relationship, validates  # type: ignore
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, CheckConstraint, Table, JSON, Constraint  # type: ignore
+from sqlalchemy.orm import relationship, validates, Mapped, mapped_column  # type: ignore
 
 from app.models.base_model import BaseModel
 from app.models.merchant import Merchant  # type: ignore
@@ -16,7 +16,7 @@ DISCOUNT_TYPES: Dict[str, str] = {
     "FREE_ITEM": "free_item"
 }
 
-OFFER_STATUS = {
+OFFER_STATUS: Dict[str, str] = {
     "ACTIVE": "active",
     "INACTIVE": "inactive",
     "EXPIRED": "expired",
@@ -24,9 +24,9 @@ OFFER_STATUS = {
     "SUSPENDED": 'suspended'
 }
 
-USAGE_TYPES = {
+USAGE_TYPES: Dict[str, str] = {
     "SINGLE_USE": "single_use",
-    "MULTI_USE": "multi_use", 
+    "MULTI_USE": "multi_use",
     "UNLIMITED": "unlimited",
     "TIERED": "tiered"
 }
@@ -43,8 +43,8 @@ class Tag(BaseModel, db.Model):
     Tag model definition.
     """
     __tablename__ = 'tags'
-    id = Column(String(64), primary_key=True)
-    name = Column(String(64), nullable=False, unique=True)
+    # id = mapped_column(String(64), primary_key=True)
+    name = mapped_column(String(64), nullable=False, unique=True)
 
     offers = relationship('Offer', secondary=offer_tags, back_populates='tags')
 
@@ -65,60 +65,75 @@ class Offer(BaseModel, db.Model):
     """
     __tablename__ = 'offers'
     # Foreign Keys
-    merchant_id = Column(String(64), ForeignKey(
+    merchant_id: Mapped[str] = mapped_column(String(64), ForeignKey(
         'merchants.id'), nullable=False)
-    category_id = Column(String(64), ForeignKey(
+    category_id: Mapped[str | None] = mapped_column(String(64), ForeignKey(
         'categories.id', ondelete='SET NULL'), nullable=True)
 
     # Attributes
-    title: Column[str] = Column(String(64), nullable=False)
-    description: Column[str] = Column(String(256), nullable=False)
-    slug: Column[str] = Column(String(64), nullable=False, unique=True)
-    cover_image: Column[str] = Column(String(256), nullable=False)
-    discount_type: Column[Enum] = Column(
+    title: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(String(256), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    cover_image: Mapped[str] = mapped_column(String(256), nullable=False)
+    discount_type: Mapped[str] = mapped_column(
         Enum(*DISCOUNT_TYPES.values()), nullable=False)
-    discount_value: Column[int] = Column(Integer, nullable=False)
-    currency: Column[str] = Column(String(3), nullable=False)
-    redemption_type: Column[Enum] = Column(
+    discount_value: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    redemption_type: Mapped[str] = mapped_column(
         Enum("in-store", "online", "both"), nullable=False, default="both")
-    coupon_limit: Column[int] = Column(Integer, nullable=True, default=0)
-    status: Column[Enum] = Column(
+    coupon_limit: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=0)
+    status: Mapped[str] = mapped_column(
         Enum(*OFFER_STATUS.values()),
         nullable=False, default=OFFER_STATUS["ACTIVE"])
-    start_date: Column[datetime] = Column(DateTime, nullable=False,
-                                          default=datetime.now(timezone.utc), index=True)
-    end_date: Column[datetime] = Column(DateTime, nullable=False, index=True)
-    terms_and_conditions = Column(Text, nullable=True)
-    featured_until: Column[datetime] = Column(DateTime, nullable=True)
-    highlighted_until: Column[datetime] = Column(DateTime, nullable=True)
+    start_date: Mapped[datetime] = mapped_column(DateTime, nullable=False,
+                                                 default=datetime.now(timezone.utc), index=True)
+    end_date: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, index=True)
+    terms_and_conditions: Mapped[str |
+                                 None] = mapped_column(Text, nullable=True)
+    featured_until: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
+    highlighted_until: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
     tags = relationship('Tag', secondary=offer_tags, back_populates='offers')
 
-    view_count = Column(Integer, default=0)
-    unique_visitors = Column(Integer, default=0)
-    last_viewed_at = Column(DateTime, nullable=True)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    unique_visitors: Mapped[int] = mapped_column(Integer, default=0)
+    last_viewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
     # in cents to avoid floating point issues
-    revenue_generated = Column(Integer, default=0)
+    revenue_generated: Mapped[int] = mapped_column(Integer, default=0)
     # Average time from claim to redemption in hours
-    avg_redemption_time_hours = Column(Integer, nullable=True)
+    avg_redemption_time_hours: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)
 
     # New flexible usage system fields
-    usage_type: Column[Enum] = Column(
+    usage_type: Mapped[str] = mapped_column(
         Enum(*USAGE_TYPES.values()),
         nullable=False, default=USAGE_TYPES["SINGLE_USE"])
-    max_claims_per_user: Column[int] = Column(Integer, nullable=True, default=1)
-    cooldown_period_hours: Column[int] = Column(Integer, nullable=True)
-    tier_progression: Column[Text] = Column(JSON, nullable=True)  # JSON for tiered discount rules
+    max_claims_per_user: Mapped[int] = mapped_column(
+        Integer, nullable=True, default=1)
+    cooldown_period_hours: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)
+    tier_progression: Mapped[dict | list | None] = mapped_column(
+        JSON, nullable=True)  # JSON for tiered discount rules
 
     # *One
-    merchant: Merchant = relationship('Merchant', back_populates='offers')
-    category: Category = relationship('Category', back_populates='offers')
+    merchant: Mapped[Merchant] = relationship(
+        'Merchant', back_populates='offers')
+    category: Mapped[Category] = relationship(
+        'Category', back_populates='offers')
 
     # *Many
-    coupons = relationship('Coupon', back_populates='offer', cascade='all, delete-orphan')
+    coupons = relationship('Coupon', back_populates='offer',
+                           cascade='all, delete-orphan')
     saved_offers = relationship(
         'SavedOffer', back_populates='offer', cascade='all, delete-orphan')
-    views = relationship('OfferView', backref='offer', cascade='all, delete-orphan')
-    user_usage_stats = relationship('UserOfferUsage', backref='offer', cascade='all, delete-orphan')
+    views = relationship('OfferView', backref='offer',
+                         cascade='all, delete-orphan')
+    user_usage_stats = relationship(
+        'UserOfferUsage', back_populates='offer', cascade='all, delete-orphan')
 
     # Constraints
     __table_args__ = (
@@ -132,7 +147,7 @@ class Offer(BaseModel, db.Model):
         CheckConstraint('end_date > highlighted_until',
                         name='check_end_after_highlighted'),
         CheckConstraint('featured_until > highlighted_until',
-                        name='check_featured_after_highlighted')
+                        name='check_featured_after_highlighted'),
     )
 
     def __str__(self):
@@ -191,13 +206,14 @@ def increment_category_offer_count(mapper, connection, target):
         return
 
     # Get merchant's category_id directly from database
+    merchant_table = Merchant.__table__  # type: ignore
     merchant = connection.execute(
-        select([Merchant.__table__.c.category_id])
-        .where(Merchant.__table__.c.id == target.merchant_id)
+        select(merchant_table.c.category_id)
+        .where(merchant_table.c.id == target.merchant_id)
     ).fetchone()
 
     if merchant and merchant.category_id:
-        categoryTable = Category.__table__
+        categoryTable = Category.__table__  # type: ignore
         connection.execute(
             categoryTable.update()
             .where(categoryTable.c.id == merchant.category_id)
@@ -210,20 +226,21 @@ def decrement_category_offer_count(mapper, connection, target):
     """
     Decrement the offer count for the associated merchant before deleting an offer.
     """
-    categoryTable = Category.__table__
+    categoryTable = Category.__table__  # type: ignore
     connection.execute(
         categoryTable.update().where(categoryTable.c.id == target.merchant.category_id).values(
             offer_count=categoryTable.c.offer_count - 1)
     )
-    
 
 
 class OfferView(BaseModel, db.Model):
     """Tracks unique views of offers by users"""
     __tablename__ = 'offer_views'
 
-    offer_id = Column(String(64), ForeignKey('offers.id'), nullable=False)
-    user_id = Column(String(64), ForeignKey('consumers.id'), nullable=False)
+    offer_id = mapped_column(
+        String(64), ForeignKey('offers.id'), nullable=False)
+    user_id = mapped_column(String(64), ForeignKey(
+        'consumers.id'), nullable=False)
 
     user = relationship('Consumer', backref='viewed_offers')
 
@@ -238,9 +255,9 @@ class SavedOffer(BaseModel, db.Model):
     """
     __tablename__ = 'saved_offers'
     # Foreign Keys
-    consumer_id = Column(String(64), ForeignKey(
+    consumer_id = mapped_column(String(64), ForeignKey(
         'consumers.id'), nullable=False)
-    offer_id = Column(String(64), ForeignKey(
+    offer_id = mapped_column(String(64), ForeignKey(
         'offers.id'), nullable=False)
 
     # *One

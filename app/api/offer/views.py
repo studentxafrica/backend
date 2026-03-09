@@ -1,20 +1,23 @@
 from sqlalchemy.sql.expression import case  # type: ignore
 from sqlalchemy import and_, or_, desc, asc, func  # type: ignore
+from sqlalchemy.exc import IntegrityError  # type: ignore
 from flask import jsonify, request, current_app
 from datetime import datetime, timezone, timedelta  # type: ignore
 from sqlalchemy.orm import Session  # type: ignore
+from sqlalchemy.orm.scoping import scoped_session  # type: ignore
 from typing import List  # type: ignore
-from app.models.offer import DISCOUNT_TYPES
+from app.models.offer import DISCOUNT_TYPES, USAGE_TYPES
 
 
 from app.api.offer import offer
 from app.api.offer.helpers import track_offer_view  # type: ignore
 from app.models.offer import Offer
-from app.models.coupon import Coupon
+from app.models.coupon import Coupon, COUPON_STATUS
 from app.models.consumer import Consumer
 from app.models.category import Category
+from app.models.merchant import Merchant
 from app import db
-from flask_jwt_extended import jwt_required, current_user, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.utils import generate_coupon_code
 from flasgger import swag_from  # type: ignore
 import os
@@ -22,7 +25,29 @@ from flask import g
 from app.utils import roles_required  # type: ignore
 
 
-session: Session = db.session
+session: scoped_session = db.session
+
+STUDENT_OWNED_CATEGORY_SLUG = "student-owned"
+STUDENT_OWNED_FILTER_ID = "student-owned"
+STUDENT_OWNED_CATEGORY_NAME = "Student-Owned"
+STUDENT_OWNED_CATEGORY_IMAGE = "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1200&q=80"
+
+
+def is_student_owned_merchant(merchant: Merchant | None) -> bool:
+    if not merchant:
+        return False
+    category = getattr(merchant, "category", None)
+    return bool(category and getattr(category, "slug", None) == STUDENT_OWNED_CATEGORY_SLUG)
+
+
+def serialize_offer_category(category: Category | None):
+    if not category:
+        return None
+    return {
+        "id": category.id,
+        "name": category.name,
+        "slug": category.slug,
+    }
 
 
 @offer.route('/<id>', methods=['GET'])
@@ -40,7 +65,8 @@ def get_offer_by_id(id: str):
     user = g.user
     if not user:
         return jsonify({"message": "Couldn't verify current user identity"}), 401
-    offer: Offer = db.session.query(Offer).filter(Offer.id == id).first()
+    offer: Offer | None = db.session.query(Offer).filter(
+        Offer.id == id).first()  # type: ignore[arg-type]
     if not offer:
         return jsonify({"message": "Offer not found"}), 404
 
@@ -62,7 +88,9 @@ def get_offer_by_id(id: str):
                 'name': offer.merchant.name,
                 'logo': offer.merchant.logo,
                 'website': offer.merchant.website,
+                'isStudentOwned': is_student_owned_merchant(offer.merchant),
             },
+            "isStudentOwned": is_student_owned_merchant(offer.merchant),
             'coupons': {
                 'total': offer.coupon_limit,
                 'redeemed': len([coupon for coupon in offer.coupons if coupon.redeemed]),
@@ -87,73 +115,151 @@ def create_coupon(id):
         - Offer not found
         - Coupon already exists
     """
+    user: Consumer = g.user
+    if not user:
+        return jsonify({"message": "Couldn't verify current user identity"}), 401
+
+    if not user.verified:
+        return jsonify({
+            "message": "User not verified",
+            "description": "You need to verify your account before claiming a coupon"
+        }), 403
+
+    session = db.session
+    now = datetime.now(timezone.utc)
+
     try:
-        user: Consumer = g.user
-        if not user:
-            return jsonify({"message": "Couldn't not verify current user identity"}), 404
 
-        if not user.verified:
-            return jsonify({
-                "message": "User not verified",
-                "description": "You need to verify your account before claiming a coupon"
-            }), 403
-
-        # Fetch offer by ID from the database
-        offer: Offer = db.session.query(Offer).filter(Offer.id == id).first()
+        offer: Offer | None = session.query(Offer).filter(
+            Offer.id == id).with_for_update().first()
         if not offer:
+            session.rollback()
             return jsonify({"message": "Offer not found"}), 404
 
-        # Use new flexible usage system for validation
-        from app.api.offer.usage_helpers import can_user_claim_offer, record_coupon_claim, calculate_tiered_discount
+        if offer.usage_type == USAGE_TYPES["TIERED"]:
+            session.rollback()
+            return jsonify({
+                "message": "Cannot claim coupon",
+                "description": "Tiered offers are not supported"
+            }), 400
 
-        can_claim, reason = can_user_claim_offer(user.id, offer.id)
+        if offer.status == 'sold_out':
+            session.rollback()
+            return jsonify({
+                "message": "Cannot claim coupon",
+                "description": "Coupons sold out"
+            }), 400
+        if offer.status != 'active':
+            session.rollback()
+            return jsonify({
+                "message": "Cannot claim coupon",
+                "description": "Offer is not active"
+            }), 400
+
+        offer_end = offer.end_date
+        if offer_end.tzinfo is None:
+            offer_end = offer_end.replace(tzinfo=timezone.utc)
+        if offer_end <= now:
+            session.rollback()
+            return jsonify({
+                "message": "Cannot claim coupon",
+                "description": "Offer has expired"
+            }), 400
+
+        existing_coupon = session.query(Coupon).filter(
+            Coupon.offer_id == offer.id,
+            Coupon.consumer_id == user.id,
+            Coupon.status == COUPON_STATUS["ACTIVE"]
+        ).with_for_update().first()
+
+        if existing_coupon:
+            existing_expiry = existing_coupon.expiry_date
+            if existing_expiry.tzinfo is None:
+                existing_expiry = existing_expiry.replace(tzinfo=timezone.utc)
+            if existing_expiry <= now:
+                existing_coupon.status = COUPON_STATUS["EXPIRED"]
+                session.flush()
+            else:
+                session.rollback()
+                return jsonify({
+                    "message": "Coupon already claimed",
+                    "description": "You already have an active coupon for this offer",
+                    "data": {
+                        'code': existing_coupon.coupon_code,
+                        "qrCode": existing_coupon.qr_code,
+                        'expiryDate': existing_coupon.expiry_date,
+                        'status': existing_coupon.status
+                    }
+                }), 200
+
+        from app.models.user_offer_usage import UserOfferUsage
+        usage = session.query(UserOfferUsage).filter(
+            UserOfferUsage.consumer_id == user.id,
+            UserOfferUsage.offer_id == offer.id
+        ).with_for_update().first()
+
+        if not usage:
+            usage = UserOfferUsage(
+                consumer_id=user.id,
+                offer_id=offer.id,
+                usage_count=0,
+                total_savings=0,
+                total_redemptions=0
+            )
+            session.add(usage)
+            session.flush()
+
+        # Coupon availability check (claimed + redeemed)
+        claimed_redeemed_count = None
+        if offer.usage_type != USAGE_TYPES["UNLIMITED"]:
+            coupon_limit = offer.coupon_limit or 0
+            if coupon_limit <= 0:
+                session.rollback()
+                return jsonify({
+                    "message": "Cannot claim coupon",
+                    "description": "Coupons sold out"
+                }), 400
+            claimed_redeemed_count = session.query(func.count(Coupon.id)).filter(
+                Coupon.offer_id == offer.id,
+                Coupon.status.in_([COUPON_STATUS["ACTIVE"],
+                                   COUPON_STATUS["REDEEMED"]])
+            ).scalar() or 0
+
+        from app.api.offer.usage_helpers import evaluate_claim_rules, calculate_tiered_discount
+        can_claim, reason = evaluate_claim_rules(
+            offer=offer,
+            usage=usage,
+            has_active_coupon=False,
+            claimed_redeemed_count=claimed_redeemed_count,
+            now=now
+        )
         if not can_claim:
-            # For single-use offers, check if user already has an active coupon
-            if offer.usage_type == 'single_use':
-                existing_coupon = db.session.query(Coupon).filter(
-                    Coupon.offer_id == offer.id,
-                    Coupon.consumer_id == user.id,
-                    Coupon.status == 'active'
-                ).first()
-
-                if existing_coupon:
-                    return jsonify({
-                        "message": "Coupon already claimed",
-                        "description": reason,
-                        "data": {
-                            'code': existing_coupon.coupon_code,
-                            "qrCode": existing_coupon.qr_code,
-                            'expiryDate': existing_coupon.expiry_date,
-                            'status': existing_coupon.status
-                        }
-                    }), 409
-
+            session.rollback()
             return jsonify({
                 "message": "Cannot claim coupon",
                 "description": reason
             }), 400
 
-        # Record the coupon claim in usage tracking
-        usage_record = record_coupon_claim(user.id, offer.id)
+        usage.record_claim(commit=False)
 
-        # Calculate tiered discount if applicable
-        discount_info = calculate_tiered_discount(
-            offer, usage_record.usage_count - 1)  # -1 because we just incremented
-
-        # Logic to create a coupon for the offer
-        coupon_code = generate_coupon_code(offer.id, current_user.id)
+        coupon_code = generate_coupon_code(offer.id, user.id)
         coupon = Coupon(
             coupon_code=coupon_code,
             offer_id=offer.id,
-            consumer_id=current_user.id,
+            consumer_id=user.id,
             expiry_date=offer.end_date,
-            status='active'
+            status=COUPON_STATUS["ACTIVE"]
         )
-        coupon.save()
+        session.add(coupon)
+
+        discount_info = calculate_tiered_discount(
+            offer, usage.usage_count - 1)
+
+        session.commit()
 
         return jsonify({
             "message": "Coupon created successfully",
-            "description": f"You can now use this coupon code to redeem the offer. This is your {usage_record.usage_count} claim for this offer.",
+            "description": f"You can now use this coupon code to redeem the offer. This is your {usage.usage_count} claim for this offer.",
             "data": {
                 'code': coupon.coupon_code,
                 "qrCode": coupon.qr_code,
@@ -161,16 +267,39 @@ def create_coupon(id):
                 'status': coupon.status,
                 'discount': discount_info,
                 'usage_stats': {
-                    'total_claims': usage_record.usage_count,
-                    'total_savings': usage_record.total_savings,
-                    'can_claim_more': usage_record.can_claim_more,
-                    'next_available_claim': usage_record.next_available_claim.isoformat() if usage_record.next_available_claim else None
+                    'total_claims': usage.usage_count,
+                    'total_savings': usage.total_savings,
+                    'can_claim_more': usage.can_claim_more,
+                    'next_available_claim': usage.next_available_claim.isoformat() if usage.next_available_claim else None
                 }
             }
         }), 201
+    except IntegrityError:
+        session.rollback()
+        existing_coupon = session.query(Coupon).filter(
+            Coupon.offer_id == id,
+            Coupon.consumer_id == user.id,
+            Coupon.status == COUPON_STATUS["ACTIVE"]
+        ).first()
+        if existing_coupon:
+            return jsonify({
+                "message": "Coupon already claimed",
+                "description": "You already have an active coupon for this offer",
+                "data": {
+                    'code': existing_coupon.coupon_code,
+                    "qrCode": existing_coupon.qr_code,
+                    'expiryDate': existing_coupon.expiry_date,
+                    'status': existing_coupon.status
+                }
+            }), 409
+        return jsonify({
+            "message": "Cannot claim coupon",
+            "description": "Unable to create coupon"
+        }), 400
     except Exception as e:
+        session.rollback()
         current_app.logger.info(f"Error creating coupon: {str(e)}")
-        return jsonify({"message": str(e)}), 500
+        return jsonify({"message": 'Internal Server Error'}), 500
 
 
 @offer.route('/categories', methods=['GET'])
@@ -180,15 +309,34 @@ def get_offer_categories():
     """
     # Fetch offer categories from the database
     try:
-        categories = db.session.query(Category).all()
+        categories = db.session.query(Category).order_by(asc(Category.name)).all()
+        category_payload = [{
+            'id': category.id,
+            'name': category.name,
+            'slug': category.slug,
+            'imageURL': category.image_url,
+        } for category in categories]
+
+        student_owned_index = next(
+            (idx for idx, category in enumerate(category_payload)
+             if category.get("slug") == STUDENT_OWNED_CATEGORY_SLUG),
+            None
+        )
+
+        if student_owned_index is None:
+            category_payload.insert(0, {
+                "id": STUDENT_OWNED_FILTER_ID,
+                "name": STUDENT_OWNED_CATEGORY_NAME,
+                "slug": STUDENT_OWNED_CATEGORY_SLUG,
+                "imageURL": STUDENT_OWNED_CATEGORY_IMAGE,
+            })
+        elif student_owned_index != 0:
+            student_owned = category_payload.pop(student_owned_index)
+            category_payload.insert(0, student_owned)
+
         return jsonify({
             "message": "Successfully fetched all offer categories",
-            "data": [{
-                'id': category.id,
-                'name': category.name,
-                'slug': category.slug,
-                'imageURL': category.image_url,
-            } for category in categories]
+            "data": category_payload
         }), 200
     except Exception as e:
         return jsonify({
@@ -223,16 +371,14 @@ def get_featured_offers():
                 'currency': offer.currency,
                 'redemptionType': offer.redemption_type,
                 'couponLimit': offer.coupon_limit,
-                'category': {
-                    'id': offer.category.id if offer.category else None,
-                    'name': offer.category.name if offer.category else None,
-                    'slug': offer.category.slug if offer.category else None,
-                },
+                'category': serialize_offer_category(offer.category),
                 'merchant': {
                     'id': offer.merchant.id,
                     'name': offer.merchant.name,
                     'logo': offer.merchant.logo,
+                    'isStudentOwned': is_student_owned_merchant(offer.merchant),
                 },
+                'isStudentOwned': is_student_owned_merchant(offer.merchant),
                 'status': offer.status,
                 'startDate': offer.start_date,
                 'endDate': offer.end_date,
@@ -288,16 +434,14 @@ def get_latest_offers():
                 'currency': offer.currency,
                 'redemptionType': offer.redemption_type,
                 'couponLimit': offer.coupon_limit,
-                'category': {
-                    'id': offer.category.id if offer.category else None,
-                    'name': offer.category.name if offer.category else None,
-                    'slug': offer.category.slug if offer.category else None,
-                } if offer.category else None,
+                'category': serialize_offer_category(offer.category),
                 'merchant': {
                     'id': offer.merchant.id,
                     'name': offer.merchant.name,
                     'logo': offer.merchant.logo,
+                    'isStudentOwned': is_student_owned_merchant(offer.merchant),
                 },
+                'isStudentOwned': is_student_owned_merchant(offer.merchant),
                 'status': offer.status,
                 'startDate': offer.start_date,
                 'endDate': offer.end_date,
@@ -340,7 +484,7 @@ def get_recommended_offers():
             for f in filters:
                 if f in DISCOUNT_TYPES.values():
                     discount_type_filters.append(f)
-                elif f in ['expiring-soon', 'new-arrivals']:
+                elif f in ['expiring-soon', 'new-arrivals', STUDENT_OWNED_FILTER_ID]:
                     special_filters.append(f)
                 else:
                     category_filters.append(f)
@@ -365,19 +509,23 @@ def get_recommended_offers():
                         # Offers created in the last 7 days
                         conditions.append(
                             Offer.start_date > datetime.now(timezone.utc) - timedelta(days=7))
+                    elif sf == STUDENT_OWNED_FILTER_ID:
+                        conditions.append(
+                            Offer.merchant.has(
+                                Merchant.category.has(Category.slug == STUDENT_OWNED_CATEGORY_SLUG)
+                            )
+                        )
 
             if conditions:
                 query = query.filter(or_(*conditions))
 
         # Apply search
-        from app.models.merchant import Merchant  # type: ignore
         if search_query:
-            query = query.filter(
+            query = query.join(Merchant, Offer.merchant_id == Merchant.id).filter(
                 or_(
                     func.lower(Offer.title).contains(search_query),
                     func.lower(Offer.description).contains(search_query),
-                    Offer.merchant.has(func.lower(
-                        Merchant.name).contains(search_query)),
+                    func.lower(Merchant.name).contains(search_query),
                     Offer.tags.any(func.lower(
                         'name').contains(search_query)
                     ),
@@ -390,13 +538,11 @@ def get_recommended_offers():
             query = query.order_by(desc(Offer.start_date))
         elif sort_option == 'highest-discount':
             discount_value_case = case(
-                [
-                    (Offer.discount_type == 'percentage', Offer.discount_value),
-                    (Offer.discount_type == 'fixed_amount',
-                     Offer.discount_value * 100),
-                    (Offer.discount_type == 'buy_one_get_one', 50),
-                    (Offer.discount_type == 'free_item', 100)
-                ],
+                (Offer.discount_type == 'percentage', Offer.discount_value),
+                (Offer.discount_type == 'fixed_amount',
+                 Offer.discount_value * 100),
+                (Offer.discount_type == 'buy_one_get_one', 50),
+                (Offer.discount_type == 'free_item', 100),
                 else_=0
             )
             query = query.order_by(desc(discount_value_case))
@@ -432,11 +578,10 @@ def get_recommended_offers():
                     'id': offer.merchant.id,
                     'name': offer.merchant.name,
                     'logo': offer.merchant.logo,
+                    'isStudentOwned': is_student_owned_merchant(offer.merchant),
                 },
-                'category': {
-                    'id': offer.category.id,
-                    'name': offer.category.name,
-                } if offer.category else None,
+                'category': serialize_offer_category(offer.category),
+                'isStudentOwned': is_student_owned_merchant(offer.merchant),
                 'status': offer.status,
                 'couponLimit': offer.coupon_limit,
                 'startDate': offer.start_date.isoformat(),
@@ -486,7 +631,10 @@ def get_similar_offers(id):
                     'id': similar_offer.merchant.id,
                     'name': similar_offer.merchant.name,
                     'logo': similar_offer.merchant.logo,
+                    'isStudentOwned': is_student_owned_merchant(similar_offer.merchant),
                 },
+                'category': serialize_offer_category(similar_offer.category),
+                'isStudentOwned': is_student_owned_merchant(similar_offer.merchant),
                 'status': similar_offer.status,
                 'startDate': similar_offer.start_date.isoformat(),
                 'endDate': similar_offer.end_date.isoformat(),
@@ -535,8 +683,19 @@ def create_offer():
             'category_id', 'featured_until', 'highlighted_until', 'terms_and_conditions', 'tags', 'stores',
             'usage_type', 'max_claims_per_user', 'cooldown_period_hours', 'tier_progression'
         ]
+
+        def _missing(field_name: str) -> bool:
+            if field_name not in data:
+                return True
+            value = data.get(field_name)
+            if value is None:
+                return True
+            if isinstance(value, str) and not value.strip():
+                return True
+            return False
+
         for field in required_fields:
-            if field is not None and (field not in data or not data[field]):
+            if field is not None and _missing(field):
                 return jsonify({"message": f"Missing required field: {field}"}), 400
         # upload cover image to cloudinary
         import cloudinary.uploader  # type: ignore
@@ -555,6 +714,9 @@ def create_offer():
 
         if usage_type not in USAGE_TYPES.values():
             return jsonify({"message": f"Invalid usage_type. Must be one of: {list(USAGE_TYPES.values())}"}), 400
+
+        if usage_type == USAGE_TYPES["TIERED"]:
+            return jsonify({"message": "Tiered offers are not supported"}), 400
 
         # Validate multi-use specific fields
         if usage_type == USAGE_TYPES["MULTI_USE"]:
@@ -618,7 +780,9 @@ def create_offer():
                     'name': offer.merchant.name,
                     'logo': offer.merchant.logo,
                     'website': offer.merchant.website,
+                    'isStudentOwned': is_student_owned_merchant(offer.merchant),
                 },
+                "isStudentOwned": is_student_owned_merchant(offer.merchant),
                 'coupons': {
                     'total': offer.coupon_limit,
                     'redeemed': len([coupon for coupon in offer.coupons if coupon.redeemed]),
@@ -648,7 +812,8 @@ def save_offer(id):
     """
     try:
         # Fetch offer by ID from the database
-        offer: Offer = db.session.query(Offer).filter(Offer.id == id).first()
+        offer: Offer | None = db.session.query(
+            Offer).filter(Offer.id == id).first()
         if not offer:
             return jsonify({"message": "Offer not found"}), 404
 
@@ -690,7 +855,9 @@ def save_offer(id):
                     'name': offer.merchant.name,
                     'logo': offer.merchant.logo,
                     'website': offer.merchant.website,
+                    'isStudentOwned': is_student_owned_merchant(offer.merchant),
                 },
+                "isStudentOwned": is_student_owned_merchant(offer.merchant),
                 'status': offer.status,
                 'startDate': offer.start_date.isoformat(),
                 'endDate': offer.end_date.isoformat(),
@@ -707,55 +874,64 @@ def save_offer(id):
 @swag_from(os.path.join('offer', 'docs', 'list-offers.yml'))
 def list_offers():
     """List offers with optional filters"""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
-    category = request.args.get('category')
-    merchant = request.args.get('merchant')
-    status = request.args.get('status')
-    search = request.args.get('search')
-    featured = request.args.get('featured', 'false').lower() == 'true'
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        category = request.args.get('category')
+        merchant = request.args.get('merchant')
+        status = request.args.get('status')
+        search = request.args.get('search')
+        featured = request.args.get('featured', 'false').lower() == 'true'
 
-    # Start with a base query
-    query = Offer.query
+        # Start with a base query
+        query = Offer.query
 
-    # Add filters
-    if category:
-        query = query.filter(Offer.category == category)
-    if merchant:
-        query = query.filter(Offer.merchant_id == merchant)
-    if status:
-        query = query.filter(Offer.status == status)
-    if search:
-        query = query.filter(
-            (Offer.title.ilike(f'%{search}%')) |
-            (Offer.description.ilike(f'%{search}%'))
-        )
-    if featured:
-        current_time = datetime.now(timezone.utc)
-        query = query.filter(
-            and_(
-                Offer.featured_until > current_time,
-                Offer.end_date > datetime.now(timezone.utc)
+        # Add filters
+        if category:
+            query = query.filter(Offer.category == category)
+        if merchant:
+            query = query.filter(Offer.merchant_id == merchant)
+        if status:
+            query = query.filter(Offer.status == status)
+        if search:
+            query = query.filter(
+                (Offer.title.ilike(f'%{search}%')) |
+                (Offer.description.ilike(f'%{search}%'))
             )
-        ).order_by(Offer.featured_until.desc())
+        if featured:
+            current_time = datetime.now(timezone.utc)
+            query = query.filter(
+                and_(
+                    Offer.featured_until > current_time,
+                    Offer.end_date > datetime.now(timezone.utc)
+                )
+            ).order_by(Offer.featured_until.desc())
 
-    # Add index hints for MySQL
-    query = query.with_hint(Offer, 'USE INDEX (idx_featured_status)')
+        # Add index hints for MySQL
+        # query = query.with_hint(Offer, 'USE INDEX (idx_featured_status)')
 
-    # Execute pagination
-    pagination = query.paginate(page=page, per_page=per_page)
-    offers = [offer.to_dict() for offer in pagination.items]
+        # Execute pagination
+        pagination = query.paginate(page=page, per_page=per_page)
+        print(f"Executed query: {str(query)}")  # Debugging line to check the generated SQL
+        print(f"Total offers found: {pagination.total}")  # Debugging line to check total results
+        offers = [offer.to_dict() for offer in pagination.items]
 
-    return jsonify({
-        'message': 'Successfully fetched offers',
-        'data': offers,
-        'pagination': {
-            'page': page,
-            'per_page': per_page,
-            'total': pagination.total,
-            'pages': pagination.pages
-        }
-    }), 200
+        return jsonify({
+            'message': 'Successfully fetched offers',
+            'data': offers,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': pagination.total,
+                'pages': pagination.pages
+            }
+        }), 200
+    except:
+        current_app.logger.error("Error fetching offers", exc_info=True)
+        return jsonify({
+            "message": "Internal Server Error",
+            "description": "An error occurred while trying to fetch offers"
+        }), 500
 
 
 @offer.route('/<id>', methods=['DELETE'])
@@ -774,7 +950,7 @@ def delete_offer(id):
             return jsonify({"message": "Unauthorized"}), 401
 
         # Fetch offer by ID from the database
-        offer: Offer = db.session.query(Offer).filter(
+        offer: Offer | None = db.session.query(Offer).filter(
             Offer.id == id,
             Offer.merchant_id == user.id
         ).first()
@@ -805,7 +981,8 @@ def get_offer_usage_stats(id):
             return jsonify({"message": "Unauthorized"}), 401
 
         # Check if offer exists
-        offer: Offer = db.session.query(Offer).filter(Offer.id == id).first()
+        offer: Offer | None = db.session.query(
+            Offer).filter(Offer.id == id).first()
         if not offer:
             return jsonify({"message": "Offer not found"}), 404
 
@@ -884,7 +1061,7 @@ def get_user_savings_summary():
                     "title": usage.offer.title,
                     "merchant_name": usage.offer.merchant.name
                 },
-                "last_claimed_at": usage.last_claimed_at.isoformat(),
+                "last_claimed_at": usage.last_claimed_at.isoformat() if usage.last_claimed_at else None,
                 "usage_count": usage.usage_count
             })
 
@@ -913,27 +1090,33 @@ def check_available_claims(id):
             return jsonify({"message": "Unauthorized"}), 401
 
         # Check if offer exists
-        offer: Offer = db.session.query(Offer).filter(Offer.id == id).first()
+        offer: Offer | None = db.session.query(
+            Offer).filter(Offer.id == id).first()
         if not offer:
             return jsonify({"message": "Offer not found"}), 404
 
         from app.api.offer.usage_helpers import can_user_claim_offer, get_or_create_user_usage
 
+        if offer.usage_type == USAGE_TYPES["TIERED"]:
+            return jsonify({
+                "message": "Tiered offers are not supported"
+            }), 400
+
         can_claim, reason = can_user_claim_offer(user.id, id)
-        usage = get_or_create_user_usage(user.id, id)
+        usage = get_or_create_user_usage(
+            user.id, id, create_if_missing=False)
+        usage_count = usage.usage_count if usage else 0
+        last_claimed_at = usage.last_claimed_at if usage else None
 
         # Calculate remaining claims based on usage type
         remaining_claims = None
         if offer.usage_type == 'single_use':
-            remaining_claims = 1 - usage.usage_count if usage.usage_count == 0 else 0
+            remaining_claims = 1 - usage_count if usage_count == 0 else 0
         elif offer.usage_type == 'multi_use':
             remaining_claims = max(
-                0, offer.max_claims_per_user - usage.usage_count)
+                0, offer.max_claims_per_user - usage_count)
         elif offer.usage_type == 'unlimited':
             remaining_claims = "unlimited"
-        elif offer.usage_type == 'tiered':
-            remaining_claims = max(
-                0, offer.max_claims_per_user - usage.usage_count)
 
         return jsonify({
             "message": "Successfully checked claim availability",
@@ -941,8 +1124,8 @@ def check_available_claims(id):
                 "can_claim_now": can_claim,
                 "reason": reason if not can_claim else None,
                 "remaining_claims": remaining_claims,
-                "current_usage_count": usage.usage_count,
-                "next_available_claim": usage.next_available_claim.isoformat() if usage.next_available_claim else None,
+                "current_usage_count": usage_count,
+                "next_available_claim": usage.next_available_claim.isoformat() if usage and usage.next_available_claim else None,
                 "offer_details": {
                     "usage_type": offer.usage_type,
                     "max_claims_per_user": offer.max_claims_per_user,

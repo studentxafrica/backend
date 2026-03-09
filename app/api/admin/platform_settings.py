@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 from app.models import Category, Tag
 from app import db
 # from app.utils import admin_required
-from . import admin
+from . import admin, current_app
 from app.utils import roles_required
 
 # General Settings Endpoints
@@ -12,70 +12,88 @@ from app.utils import roles_required
 @admin.route('/general', methods=['GET', 'PUT'])
 @roles_required('admin')
 def general_settings():
-    if request.method == 'GET':
-        # Return current platform settings
-        return jsonify({
-            'platformName': 'StudentX',
-            'platformDescription': 'The ultimate student discount platform',
-            'platformUrl': 'studentx.co.ke',
-            'featureSettings': {
-                'autoApproveMerchants': False,
-                'emailVerification': True,
-                'studentIdVerification': True,
-                'merchantApprovalNotifications': True,
-                'featuredOffers': True,
-                'socialSharing': True
-            },
-            'platform_limits': {
-                'maxOffersPerMerchant': 25,
-                'maxCouponsPerOffer': 1000,
-                'couponExpiryDays': 30
-            }
-        })
+    try:
+        if request.method == 'GET':
+            # Return current platform settings
+            return jsonify({
+                'platformName': 'StudentX',
+                'platformDescription': 'The ultimate student discount platform',
+                'platformUrl': 'studentx.co.ke',
+                'featureSettings': {
+                    'autoApproveMerchants': False,
+                    'emailVerification': True,
+                    'studentIdVerification': True,
+                    'merchantApprovalNotifications': True,
+                    'featuredOffers': True,
+                    'socialSharing': True
+                },
+                'platform_limits': {
+                    'maxOffersPerMerchant': 25,
+                    'maxCouponsPerOffer': 1000,
+                    'couponExpiryDays': 30
+                }
+            })
 
-    if request.method == 'PUT':
-        # Update platform settings
-        data = request.get_json()
-        # Here you would save to database
-        return jsonify({'message': 'Settings updated successfully'}), 200
+        if request.method == 'PUT':
+            # Update platform settings
+            UPDATEABLE_SETTINGS = ['platformName', 'platformDescription',
+                                   'platformUrl', 'featureSettings', 'platform_limits']
+            data = request.get_json()
+            # Here you would save to database
+            return jsonify({'message': 'Settings updated successfully'}), 200
+    except Exception as e:
+        current_app.logger.error(f"Error in general_settings: {str(e)}")
+        return jsonify({
+            'message': 'An error occurred',
+            'description': "An error occurred while processing general settings"
+        }), 500
+
 
 @admin.route('/categories', methods=['GET', 'POST'])
 @roles_required('admin')
 def manage_categories():
-    if request.method == 'GET':
-        categories = db.session.query(Category).all()
-        return jsonify([{
-            'id': category.id,
-            'name': category.name,
-            'slug': category.slug,
-            'merchantCount': category.merchant_count,
-            'offerCount': category.offer_count,
-            'active': True  # You might want to add this field to your model
-        } for category in categories])
+    try:
+        if request.method == 'GET':
+            categories = db.session.query(Category).all()
+            return jsonify([{
+                'id': category.id,
+                'name': category.name,
+                'slug': category.slug,
+                'merchantCount': category.merchant_count,
+                'offerCount': category.offer_count,
+                'active': True  # You might want to add this field to your model
+            } for category in categories])
 
-    if request.method == 'POST':
-        data = request.get_json()
-        if not data.get('name'):
-            return jsonify({'message': 'Category name is required'}), 400
+        if request.method == 'POST':
+            data = request.get_json()
+            if not data.get('name'):
+                return jsonify({'message': 'Category name is required'}), 400
 
-        if db.session.query(Category).filter_by(name=data['name']).first():
-            return jsonify({'message': 'Category already exists'}), 400
-        
-        category = Category(
-            name=data['name'],
-            slug=data.get('slug') or data['name'].lower().replace(' ', '-'),
-            merchant_count=0,
-            offer_count=0
-        )
-        category.save()
+            if db.session.query(Category).filter_by(name=data['name']).first():
+                return jsonify({'message': 'Category already exists'}), 400
+
+            category = Category(
+                name=data['name'],
+                slug=data.get(
+                    'slug') or data['name'].lower().replace(' ', '-'),
+                merchant_count=0,
+                offer_count=0
+            )
+            category.save()
+            return jsonify({
+                'id': category.id,
+                'name': category.name,
+                'slug': category.slug,
+                'merchantCount': category.merchant_count,
+                'offerCount': category.offer_count,
+                'active': True
+            }), 201
+    except:
+        current_app.logger.error(f"Error in general_settings: {str(e)}")
         return jsonify({
-            'id': category.id,
-            'name': category.name,
-            'slug': category.slug,
-            'merchantCount': category.merchant_count,
-            'offerCount': category.offer_count,
-            'active': True
-        }), 201
+            "message": "Internal server error",
+            "description": "An error occurred while processing categories data"
+        })
 
 
 @admin.route('/categories/<string:category_id>', methods=['PUT', 'DELETE'])

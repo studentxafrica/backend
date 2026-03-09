@@ -128,16 +128,27 @@ def seed(students, merchants, categories, offers, coupons, edit_offers, qrcodes)
         print("Offer edit completed successfully.")
         return
     if offers:
-        from app.seeders.offer_seeder import seed_offers
-        seed_offers(offers)
-        print("Offer seeder completed successfully.")
+        if offers == -1:
+            from app.seeders.offer_seeder import seed_offer_variants
+            seed_offer_variants()
+            print("Offer variant seeder completed successfully.")
+            return
+        else:
+            from app.seeders.offer_seeder import seed_offers
+            prompt = input(
+                f"You are about to seed {offers} offers. Do you want to continue? (y/n): ")
+            if prompt.lower() != 'y':
+                print("Offer seeding cancelled.")
+                return
+            seed_offers(offers)
+            print("Offer seeder completed successfully.")
 
     if coupons:
-        if coupons == -1:
-            from app.seeders.coupon_seeders import edit_coupons
-            edit_coupons()
-            print("Coupons updated successfully.")
-            return
+        # if coupons == -1:
+        #     from app.seeders.coupon_seeders import edit_coupons
+        #     edit_coupons()
+        #     print("Coupons updated successfully.")
+        #     return
         from app.seeders.coupon_seeders import seed_coupons
         seed_coupons(coupons)
         print("Coupon seeder completed successfully.")

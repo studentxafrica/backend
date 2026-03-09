@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, JSON
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, mapped_column, Mapped
 from werkzeug.security import generate_password_hash, check_password_hash
 import enum
 from app.models.base_model import BaseModel
@@ -23,21 +23,24 @@ class AdminRole(enum.Enum):
 class Administrator(BaseModel, db.Model):
     __tablename__ = 'administrators'
 
-    username = Column(String(50), unique=True, nullable=False)
-    email = Column(String(120), unique=True, nullable=False)
-    _password = Column(String(255), nullable=False)
+    username: Mapped[str] = mapped_column(
+        String(50), unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(
+        String(120), unique=True, nullable=False)
+    _password: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Role and access
-    role = Column(Enum(AdminRole), nullable=False, default=AdminRole.SUPPORT)
-    is_superuser = Column(Boolean, default=False)
-    # permissions = Column(JSON, default={})
+    role: Mapped[AdminRole] = mapped_column(
+        Enum(AdminRole), nullable=False, default=AdminRole.SUPPORT)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+    # permissions = mapped_column(JSON, default={})
 
     # Meta data
-    first_name = Column(String(64))
-    last_name = Column(String(64))
-    phone_number = Column(String(20))
-    profile_image = Column(String(255))
-    last_login = Column(DateTime)
+    first_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    phone_number: Mapped[str] = mapped_column(String(20), nullable=True)
+    profile_image: Mapped[str] = mapped_column(String(255), nullable=True)
+    last_login: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     activity_logs = relationship(
@@ -58,7 +61,7 @@ class Administrator(BaseModel, db.Model):
         raise AttributeError("password is not accessible")
 
     @password.setter
-    def password(self, value: Column[str]) -> None:
+    def password(self, value: str) -> None:
         """
         Setter for the password attribute.
         """
@@ -80,12 +83,15 @@ class Administrator(BaseModel, db.Model):
 class AdminActivityLog(BaseModel, db.Model):
     __tablename__ = 'admin_activity_logs'
 
-    admin_id = Column(String(64), ForeignKey('administrators.id'), nullable=False)
-    action_type = Column(String(100))
-    target_resource = Column(String(255))  # e.g., "user:123", "report:45"
-    action_details = Column(JSON)
-    timestamp = Column(DateTime, default=datetime.now(timezone.utc), index=True)
-    ip_address = Column(String(45))  # IPv4 or IPv6
+    admin_id = mapped_column(String(64), ForeignKey(
+        'administrators.id'), nullable=False)
+    action_type = mapped_column(String(100))
+    # e.g., "user:123", "report:45"
+    target_resource = mapped_column(String(255))
+    action_details = mapped_column(JSON)
+    timestamp = mapped_column(
+        DateTime, default=datetime.now(timezone.utc), index=True)
+    ip_address = mapped_column(String(45))  # IPv4 or IPv6
 
     admin = relationship("Administrator", back_populates="activity_logs")
 
@@ -96,8 +102,18 @@ class AdminActivityLog(BaseModel, db.Model):
 class AdminNotification(BaseModel, db.Model):
     __tablename__ = 'admin_notifications'
 
-    admin_id = Column(String(64), ForeignKey('administrators.id'), nullable=False)
-    message = Column(Text)
-    is_read = Column(Boolean, default=False)
+    admin_id = mapped_column(String(64), ForeignKey(
+        'administrators.id'), nullable=False)
+    message = mapped_column(Text)
+    is_read = mapped_column(Boolean, default=False)
 
     admin = relationship("Administrator", back_populates="notifications")
+
+class PlatformSetting(BaseModel, db.Model):
+    __tablename__ = 'platform_settings'
+
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    value: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    def _repr_(self):
+        return f"<PlatformSetting(key='{self.key}', value='{self.value}')>"

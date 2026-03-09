@@ -5,12 +5,82 @@ from app.models.consumer import Consumer, VerificationRequestStatus
 from app import db
 from app.models.coupon import Coupon
 from app.models.offer import SavedOffer
+from app.models.student_business_application import (
+    APPLICATION_DOCUMENT_TYPES,
+    APPLICATION_STATUS,
+    StudentBusinessApplication,
+    StudentBusinessApplicationDocument,
+)
 from typing import List
 from flask import current_app
 from app.email import send_email
+from datetime import datetime, timezone
+import json
 
 
 from . import user
+
+REQUIRED_PROFILE_FIELDS = [
+    ("phone", "Phone number"),
+    ("school", "Institution/School"),
+    ("major", "Program/Major"),
+    ("graduation_year", "Expected graduation year"),
+    ("student_id", "Student ID"),
+]
+
+
+def _build_application_eligibility(user: Consumer):
+    missing_requirements = []
+    for field_name, label in REQUIRED_PROFILE_FIELDS:
+        value = getattr(user, field_name, None)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            missing_requirements.append({
+                "field": field_name,
+                "label": label,
+                "message": f"Add your {label.lower()} to continue.",
+            })
+
+    if not user.verified:
+        missing_requirements.append({
+            "field": "verification",
+            "label": "Student verification",
+            "message": "Complete student verification to apply.",
+        })
+
+    return {
+        "eligible": len(missing_requirements) == 0,
+        "missingRequirements": missing_requirements,
+    }
+
+
+def _serialize_student_business_application(application: StudentBusinessApplication | None):
+    if not application:
+        return None
+    return {
+        "id": application.id,
+        "status": application.status,
+        "businessName": application.business_name,
+        "businessType": application.business_type,
+        "businessDescription": application.business_description,
+        "businessEmail": application.business_email,
+        "businessPhone": application.business_phone,
+        "website": application.website,
+        "registrationNumber": application.registration_number,
+        "additionalNotes": application.additional_notes,
+        "reviewFeedback": application.review_feedback,
+        "submittedAt": application.created_at.isoformat() if application.created_at else None,
+        "reviewedAt": application.reviewed_at.isoformat() if application.reviewed_at else None,
+        "merchantId": application.merchant_id,
+        "documents": [{
+            "id": doc.id,
+            "name": doc.document_name,
+            "type": doc.document_type,
+            "url": doc.document_url,
+            "size": doc.size,
+            "verified": doc.verified,
+            "uploadedAt": doc.upload_date.isoformat() if doc.upload_date else None,
+        } for doc in application.documents]
+    }
 
 
 @user.route('/sheerid/callback', methods=['POST'])
@@ -121,6 +191,13 @@ def get_current_user_profile():
         'totalSavings': 1247,
         'dealsUsed': len([coupon for coupon in user.coupons if coupon.status == 'redeemed']),
         'favoriteCategories': ["Technology", "Food & Dining", "Fashion"],
+        'studentBusinessPromotion': {
+            'enabled': True,
+            'title': 'Launch your business on StudentX',
+            'description': 'Create a student-owned merchant profile and start sharing your products or freelance services with fellow students.',
+            'ctaLabel': 'Become a Student Merchant',
+            'ctaUrl': 'https://merchant.studentx.co.ke/register?merchantType=student-owned&source=student-profile',
+        },
     }
     return jsonify({
         "message": "User profile retrieved successfully",
@@ -128,14 +205,163 @@ def get_current_user_profile():
     }), 200
 
 
+@user.route('/student-business-application/eligibility', methods=['GET'])
+@roles_required('consumer')
+def get_student_business_application_eligibility():
+    user: Consumer = g.user
+    if not user:
+        return jsonify({"error": "User not found"}), 401
+
+    latest_application = db.session.query(StudentBusinessApplication).filter(
+        StudentBusinessApplication.consumer_id == user.id
+    ).order_by(StudentBusinessApplication.created_at.desc()).first()
+
+    eligibility = _build_application_eligibility(user)
+    return jsonify({
+        "message": "Eligibility retrieved successfully",
+        "data": {
+            **eligibility,
+            "latestApplication": _serialize_student_business_application(latest_application),
+        }
+    }), 200
+
+
+@user.route('/student-business-applications/latest', methods=['GET'])
+@roles_required('consumer')
+def get_latest_student_business_application():
+    user: Consumer = g.user
+    if not user:
+        return jsonify({"error": "User not found"}), 401
+
+    latest_application = db.session.query(StudentBusinessApplication).filter(
+        StudentBusinessApplication.consumer_id == user.id
+    ).order_by(StudentBusinessApplication.created_at.desc()).first()
+
+    if not latest_application:
+        return jsonify({
+            "message": "No application found",
+            "data": None
+        }), 200
+
+    return jsonify({
+        "message": "Application retrieved successfully",
+        "data": _serialize_student_business_application(latest_application)
+    }), 200
+
+
+@user.route('/student-business-applications', methods=['POST'])
+@roles_required('consumer')
+def submit_student_business_application():
+    import cloudinary.uploader  # type: ignore
+
+    user: Consumer = g.user
+    if not user:
+        return jsonify({"error": "User not found"}), 401
+
+    eligibility = _build_application_eligibility(user)
+    if not eligibility["eligible"]:
+        return jsonify({
+            "message": "You are not eligible to submit this application yet",
+            "data": eligibility
+        }), 403
+
+    latest_application = db.session.query(StudentBusinessApplication).filter(
+        StudentBusinessApplication.consumer_id == user.id
+    ).order_by(StudentBusinessApplication.created_at.desc()).first()
+
+    if latest_application and latest_application.status in [
+        APPLICATION_STATUS["PENDING"],
+        APPLICATION_STATUS["APPROVED"],
+    ]:
+        return jsonify({
+            "message": "You already have an active application",
+            "data": _serialize_student_business_application(latest_application)
+        }), 409
+
+    business_name = (request.form.get("businessName") or "").strip()
+    business_type = (request.form.get("businessType") or "").strip()
+    business_description = (request.form.get("businessDescription") or "").strip()
+    business_email = (request.form.get("businessEmail") or user.email).strip() or None
+    business_phone = (request.form.get("businessPhone") or user.phone or "").strip() or None
+    website = (request.form.get("website") or "").strip() or None
+    registration_number = (request.form.get("registrationNumber") or "").strip() or None
+    additional_notes = (request.form.get("additionalNotes") or "").strip() or None
+
+    if not business_name or not business_type or not business_description:
+        return jsonify({
+            "message": "Missing required fields",
+            "description": "businessName, businessType and businessDescription are required"
+        }), 400
+
+    ownership_documents = request.files.getlist("ownershipDocuments")
+    if not ownership_documents:
+        return jsonify({
+            "message": "At least one ownership document is required"
+        }), 400
+
+    documents_meta_str = request.form.get("documentsMeta")
+    documents_meta = json.loads(documents_meta_str) if documents_meta_str else []
+
+    application = StudentBusinessApplication(
+        consumer_id=user.id,
+        business_name=business_name,
+        business_type=business_type,
+        business_description=business_description,
+        business_email=business_email,
+        business_phone=business_phone,
+        website=website,
+        registration_number=registration_number,
+        additional_notes=additional_notes,
+        status=APPLICATION_STATUS["PENDING"],
+    )
+    db.session.flush()
+
+    for idx, file in enumerate(ownership_documents):
+        meta = documents_meta[idx] if idx < len(documents_meta) else {}
+        document_type = meta.get("type") or APPLICATION_DOCUMENT_TYPES["OWNERSHIP_PROOF"]
+        if document_type not in APPLICATION_DOCUMENT_TYPES.values():
+            document_type = APPLICATION_DOCUMENT_TYPES["OTHER"]
+
+        cloudinary_resp = cloudinary.uploader.upload(
+            file,
+            folder=f"studentx/business-applications/documents/user-{user.id}",
+            resource_type="auto"
+        )
+        StudentBusinessApplicationDocument(
+            application_id=application.id,
+            document_name=meta.get("name") or file.filename or "Ownership Document",
+            document_type=document_type,
+            document_url=cloudinary_resp.get("secure_url"),
+            size=str(meta.get("size") or getattr(file, "content_length", "") or ""),
+        )
+
+    db.session.commit()
+
+    send_email(
+        to=[user.email],
+        subject="StudentX Business Application Received",
+        template="email/student_business_application_submitted",
+        context={
+            "student_name": user.first_name,
+            "business_name": application.business_name,
+            "application_id": application.id,
+        }
+    )
+
+    return jsonify({
+        "message": "Application submitted successfully",
+        "data": _serialize_student_business_application(application)
+    }), 201
+
+
 @user.route('/verification/student/<student_id>', methods=['GET'])
 @roles_required('admin')
 def get_student_verification_details(student_id):
     from app.models import VerificationRequest
-    verification_request: VerificationRequest = db.session.query(
+    verification_request: VerificationRequest | None = db.session.query(
         VerificationRequest).filter(
             VerificationRequest.user_id == student_id,
-            # VerificationRequest.status == 'pending'
+            # VerificationRequest.status == 'pending' TODO
     ).order_by(VerificationRequest.created_at.desc()).first()
     if not verification_request:
         return jsonify({"message": "Student has not submitted a verification request"}), 404
@@ -207,7 +433,7 @@ def process_student_verification_request():
     if not feedback:
         return jsonify({"error": "Feedback message is required"}), 400
 
-    verification_request: VerificationRequest = db.session.query(
+    verification_request: VerificationRequest | None = db.session.query(
         VerificationRequest).filter_by(id=request_id).first()
     if not verification_request:
         return jsonify({"error": "Verification request not found"}), 404
@@ -296,28 +522,49 @@ def process_student_verification_request():
 @roles_required('consumer')
 def submit_student_verification_request():
     from app.models import VerificationRequest, VerificationDocument
+    import json
+    import datetime
+    import cloudinary
+    import cloudinary.uploader
+
     user: Consumer = g.user
     if not user:
         return jsonify({"error": "User not found"}), 401
 
-    data = request.get_json()
-    if not data or 'documents' not in data:
+    # Handle multipart/form-data
+    personal_info_str = request.form.get('personalInfo')
+    academic_info_str = request.form.get('academicInfo')
+    documents_meta_str = request.form.get('documentsMeta')
+    files = request.files.getlist('documents')
+
+    if not files or len(files) == 0:
         return jsonify({"error": "No documents provided"}), 400
 
-    if data.get('personalInfo') is not None and 'dateOfBirth' in data['personalInfo']:
-        import datetime
+    # Parse JSON strings
+    personal_info = json.loads(personal_info_str) if personal_info_str else {}
+    academic_info = json.loads(academic_info_str) if academic_info_str else {}
+    documents_meta = json.loads(documents_meta_str) if documents_meta_str else []
+
+    # Update personal info
+    if personal_info.get('dateOfBirth'):
         try:
-            date_of_birth_str = data['personalInfo']['dateOfBirth']
+            date_of_birth_str = personal_info['dateOfBirth']
             user.date_of_birth = datetime.datetime.strptime(
                 date_of_birth_str, '%Y-%m-%d')
         except ValueError:
             return jsonify({"message": "Invalid date format for dateOfBirth"}), 400
         user.save()
 
-    if data['academicInfo'] and 'year' in data['academicInfo'] or 'expectedGraduation' in data['academicInfo']:
-        user.graduation_year = data['academicInfo'].get(
-            'expectedGraduation', user.graduation_year)
-        user.year = data['academicInfo'].get('year', user.year)
+    # Update academic info
+    if academic_info:
+        if 'expectedGraduation' in academic_info:
+            user.graduation_year = academic_info.get('expectedGraduation', user.graduation_year)
+        if 'year' in academic_info:
+            user.year = academic_info.get('year', user.year)
+        if 'studentId' in academic_info:
+            user.student_id = academic_info.get('studentId', user.student_id)
+        if 'program' in academic_info:
+            user.major = academic_info.get('program', user.major)
         user.save()
 
     # Create a new verification request
@@ -327,25 +574,27 @@ def submit_student_verification_request():
     )
     verification_request.save()
 
-    # Process each document
-    for doc_data in data['documents']:
-        import cloudinary
-        import cloudinary.uploader
+    # Process each uploaded file
+    for i, file in enumerate(files):
+        # Get metadata for this file (if available)
+        meta = documents_meta[i] if i < len(documents_meta) else {}
 
+        # Upload file to Cloudinary
         cloudinary_resp = cloudinary.uploader.upload(
-            doc_data.get('preview'),
-            folder='studentx/verification/requests/documents/user-' +
-            str(user.id),
+            file,
+            folder='studentx/verification/requests/documents/user-' + str(user.id),
+            resource_type='auto'
         )
 
         document = VerificationDocument(
             request_id=verification_request.id,
-            document_name=doc_data.get('name', 'Document'),
-            document_type=doc_data.get('type'),
+            document_name=meta.get('name', file.filename or 'Document'),
+            document_type=meta.get('type'),
             document_url=cloudinary_resp.get('secure_url'),
-            size=doc_data.get('size', 0)
+            size=meta.get('size', 0)
         )
         document.save()
+
     user.verification_status = VerificationRequestStatus.IN_PROGRESS
     user.save()
 
@@ -464,7 +713,7 @@ def delete_saved_offer(offer_id):
     if not user:
         return jsonify({"error": "User not found"}), 401
 
-    saved_offer: SavedOffer = db.session.query(SavedOffer).filter(
+    saved_offer: SavedOffer | None = db.session.query(SavedOffer).filter(
         SavedOffer.id == offer_id,
         SavedOffer.consumer_id == user.id
     ).first()
@@ -488,7 +737,7 @@ def user_testimonials():
             "message": "Testimonials retrieved successfully",
             "data": [testimonial.to_json() for testimonial in testimonials]
         }), 200
-    data: dict = request.get_json()
+    data: dict | None = request.get_json()
     if not data or 'review' not in data or 'rating' not in data:
         return jsonify({"message": "Missing required fields"}), 400
 

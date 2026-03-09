@@ -2,10 +2,11 @@
 from app.models.base_model import BaseModel
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import Column, String, DateTime, Enum  # type: ignore
-from sqlalchemy.orm import relationship  # type: ignore
+from sqlalchemy.orm import relationship, mapped_column  # type: ignore
 import enum
 
 from app import db
+
 
 class VerificationRequestStatus(enum.Enum):
     PENDING = 'pending'
@@ -21,29 +22,39 @@ class Consumer(BaseModel, db.Model):
     Consumer model definition.
     """
     __tablename__ = 'consumers'
-    first_name = Column(String(128), nullable=False)
-    last_name = Column(String(128), nullable=False)
-    email = Column(String(128), nullable=False, unique=True, index=True)
-    phone = Column(String(128), nullable=True, default=None)
+    first_name = mapped_column(String(128), nullable=False)
+    last_name = mapped_column(String(128), nullable=False)
+    email = mapped_column(String(128), nullable=False, unique=True, index=True)
+    phone = mapped_column(String(128), nullable=True, default=None)
 
-    school = Column(String(128))
-    year = Column(String(8), nullable=True, default=None)
-    graduation_year = Column(String(8))
-    major = Column(String(128))
-    student_id = Column(String(128))
-    bio = Column(String(512), nullable=True, default=None)
-    location = Column(String(128), nullable=True, default=None)
-    date_of_birth = Column(DateTime, nullable=True, default=None)
-    profile_picture = Column(String(128), nullable=True, default=None)
-    verified_at = Column(DateTime, nullable=True)
-    verification_status = Column(Enum(VerificationRequestStatus), nullable=False, default=VerificationRequestStatus.PENDING)
-    verification_reminder_sent_on = Column(DateTime, nullable=True, default=None)
-    _password = Column(String(256), nullable=False)
+    school = mapped_column(String(128))
+    year = mapped_column(String(8), nullable=True, default=None)
+    graduation_year = mapped_column(String(8))
+    major = mapped_column(String(128))
+    student_id = mapped_column(String(128))
+    bio = mapped_column(String(512), nullable=True, default=None)
+    location = mapped_column(String(128), nullable=True, default=None)
+    date_of_birth = mapped_column(DateTime, nullable=True, default=None)
+    profile_picture = mapped_column(String(128), nullable=True, default=None)
+    verified_at = mapped_column(DateTime, nullable=True)
+    verification_status = mapped_column(Enum(
+        VerificationRequestStatus), nullable=False, default=VerificationRequestStatus.PENDING)
+    verification_reminder_sent_on = mapped_column(
+        DateTime, nullable=True, default=None)
+    _password = mapped_column(String(256), nullable=False)
 
     verification_requests = relationship(
         'VerificationRequest', back_populates='user', cascade='all, delete-orphan')
+    student_business_applications = relationship(
+        'StudentBusinessApplication', back_populates='consumer', cascade='all, delete-orphan')
     saved_offers = relationship(
         'SavedOffer', back_populates='consumer', cascade='all, delete-orphan')
+    # *Many
+    coupons = relationship(
+        'Coupon',
+        back_populates='consumer',
+        cascade='all, delete-orphan'
+    )
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} - {self.id.split('-')[0]}"
@@ -56,19 +67,12 @@ class Consumer(BaseModel, db.Model):
         Returns a value indicating the percentage of profile completion.
         """
         required_fields = [
-            self.first_name, self.last_name, self.email, self.phone,
+            self.first_name, self.last_name, self.email,
             self.school, self.graduation_year, self.major, self.student_id,
-            self.location, self.verified
+            self.verified
         ]
         filled_fields = sum(1 for field in required_fields if field)
         return (filled_fields / len(required_fields)) * 100 or 0.0
-
-    # *Many
-    coupons = relationship(
-        'Coupon',
-        back_populates='consumer',
-        cascade='all, delete-orphan'
-    )
 
     @property
     def password(self) -> str:
@@ -78,7 +82,7 @@ class Consumer(BaseModel, db.Model):
         raise AttributeError("password is not accessible")
 
     @password.setter
-    def password(self, value: Column[str]) -> None:
+    def password(self, value: str) -> None:
         """
         Setter for the password attribute.
         """
@@ -93,7 +97,7 @@ class Consumer(BaseModel, db.Model):
         """
         Getter for the verified attribute.
         """
-        return self.verified_at is not None and self.verification_status == VerificationRequestStatus.APPROVED
+        return self.verified_at is not None and bool(self.verification_status == VerificationRequestStatus.APPROVED)
 
     def verify_password(self, password: str) -> bool:
         """

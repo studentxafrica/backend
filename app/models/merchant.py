@@ -1,5 +1,6 @@
+from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey  # type: ignore
-from sqlalchemy.orm import relationship  # type: ignore
+from sqlalchemy.orm import relationship, Mapped, mapped_column  # type: ignore
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import event
 
@@ -14,23 +15,23 @@ class Merchant(BaseModel, db.Model):
     """
     __tablename__ = 'merchants'
     # Foreign keys
-    category_id = Column(String(64), ForeignKey(
+    category_id: Mapped[str | None] = mapped_column(String(64), ForeignKey(
         'categories.id', ondelete='SET NULL'), nullable=True)
 
     # Attributes
-    email = Column(String(128), nullable=False, unique=True, index=True)
-    name = Column(String(128), nullable=False)
-    logo = Column(String(128), nullable=True, default=None)
-    website = Column(String(128), nullable=True, default=None)
-    phone = Column(String(128), nullable=True, default=None)
-    address = Column(String(256), nullable=True, default=None)
-    city = Column(String(128), nullable=True, default=None)
-    country = Column(String(128), nullable=True, default=None)
-    zip_code = Column(String(16), nullable=True, default=None)
-    _password = Column(String(256), nullable=False)
-    preferred_currency = Column(String(8), nullable=True, default=None)
-    email_verified_on = Column(DateTime, nullable=True)
-    approved_on = Column(DateTime, nullable=True)
+    email: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    logo: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    website: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    phone: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    address: Mapped[str | None] = mapped_column(String(256), nullable=True, default=None)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    country: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    zip_code: Mapped[str | None] = mapped_column(String(16), nullable=True, default=None)
+    _password: Mapped[str] = mapped_column(String(256), nullable=False)
+    preferred_currency: Mapped[str | None] = mapped_column(String(8), nullable=True, default=None)
+    email_verified_on: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_on: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # *One
     category = relationship('Category', back_populates='merchants')
@@ -66,7 +67,7 @@ class Merchant(BaseModel, db.Model):
         raise AttributeError("password is not accessible")
 
     @password.setter
-    def password(self, value: Column[str]) -> None:
+    def password(self, value: str) -> None:
         """
         Setter for the password attribute.
         """

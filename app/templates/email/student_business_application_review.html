@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Application Update</title>
+</head>
+<body style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
+  <h2 style="margin-bottom: 8px;">Business Application Update</h2>
+  <p>Hi {{ student_name }},</p>
+  <p>
+    Your student-owned business application for
+    <strong>{{ business_name }}</strong>
+    has been updated.
+  </p>
+
+  {% if status == "approve" %}
+    <p><strong>Status:</strong> Approved</p>
+    <p>
+      Your invitation credentials have been sent separately. You can access the merchant portal here:
+      <a href="{{ merchant_portal_url }}">{{ merchant_portal_url }}</a>
+    </p>
+  {% elif status == "request" %}
+    <p><strong>Status:</strong> More Information Required</p>
+    <p>Please review the feedback below and submit an updated application.</p>
+  {% else %}
+    <p><strong>Status:</strong> Not Approved</p>
+  {% endif %}
+
+  {% if feedback %}
+    <p><strong>Reviewer feedback:</strong></p>
+    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">
+      {{ feedback }}
+    </div>
+  {% endif %}
+
+  <p style="margin-top: 16px;">Thank you,<br/>StudentX Team</p>
+</body>
+</html>

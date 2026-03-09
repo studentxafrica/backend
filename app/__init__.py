@@ -1,3 +1,5 @@
+from flask_limiter.util import get_remote_address
+from flask_limiter import Limiter
 import logging
 import os
 
@@ -8,6 +10,7 @@ from flask_jwt_extended import JWTManager  # type: ignore
 from flask_cors import CORS  # type: ignore
 from flask_migrate import Migrate  # type: ignore
 import cloudinary
+from redis import Redis  # type: ignore
 
 db: SQLAlchemy = SQLAlchemy()
 migrate = Migrate()
@@ -15,32 +18,56 @@ swagger = Swagger()
 
 jwt_manager = JWTManager()
 cors = CORS()
+redis = Redis(
+    host=os.environ.get('REDIS_HOST', 'localhost'),
+    port=int(os.environ.get('REDIS_PORT', 6379)),
+    db=int(
+        os.environ.get('REDIS_DB', 0)),
+    password=os.environ.get('REDIS_PASSWORD', None),
+    decode_responses=True,
+)
 
-file_handler: logging.FileHandler = None  # Global variable for file handler
+
+def _get_redis_storage_uri():
+    host = os.environ.get('REDIS_HOST', 'localhost')
+    port = os.environ.get('REDIS_PORT', 6379)
+    db = os.environ.get('REDIS_DB', 0)
+    password = os.environ.get('REDIS_PASSWORD')
+    if password:
+        return f"redis://:{password}@{host}:{port}/{db}"
+    return f"redis://{host}:{port}/{db}"
+
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=_get_redis_storage_uri(),
+    strategy='fixed-window',
+)
+
+# Global variable for file handler
+file_handler: logging.FileHandler | None = None
 
 
 def create_app(config_name='default'):
     """
     Create and configure the Flask application.
     """
-    print("Creating Flask application...")
     app = Flask(__name__)
-    print(f"Loading configuration for '{config_name}'...")
     from config import config
     app.config.from_object(config[config_name])
-    print("Initializing config...")
     config[config_name].init_app(app)
 
-    print("Initializing extensions...")
     db.init_app(app)
     migrate.init_app(app, db)
     jwt_manager.init_app(app)
+    limiter.init_app(app)
     cors.init_app(
         app, supports_credentials=True, resources={r"/api/*": {
             "origins": [
                 "http://localhost:2211", "http://localhost:8081", "http://localhost:8080",
                 "https://studentx.co.ke", "https://admin.studentx.co.ke", "https://merchant.studentx.co.ke",
                 "https://dev.studentx.co.ke", "https://dev.admin.studentx.co.ke", "https://dev.merchant.studentx.co.ke",
+                "https://58be8aa2849b.ngrok-free.app"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": [
@@ -50,7 +77,6 @@ def create_app(config_name='default'):
         }}
     )
 
-    print("Initializing logging...")
     # Logging configuration
     global file_handler
     file_handler = logging.FileHandler(
@@ -70,6 +96,10 @@ def create_app(config_name='default'):
     with app.app_context():
         app.logger.info(
             f"Logging file set to {app.config.get('LOG_FILE', 'app.log')} in '{app.config.get('LOG_FILE_MODE', 'a')}' mode.")
+
+    # Celery configuration
+    from app.celery_app import init_celery
+    init_celery(app)
 
     # Cloudinary configuration
     CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME')

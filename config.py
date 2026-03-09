@@ -88,13 +88,27 @@ class Config:
     # Flask-WTF flag for CSRF
     # CSRF_ENABLED = True
 
+    # Coupon upload configuration
+    COUPON_UPLOAD_MAX_SIZE = 5 * 1024 * 1024  # 5MB
+    COUPON_UPLOAD_DIR = os.environ.get(
+        "COUPON_UPLOAD_DIR",
+        os.path.join(basedir, "uploads", "coupon_uploads")
+    )
+
+    # Celery configuration
+    CELERY_BROKER_URL = os.environ.get(
+        "CELERY_BROKER_URL", "redis://localhost:6379/0"
+    )
+    CELERY_RESULT_BACKEND = os.environ.get(
+        "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
+    )
+
 
 class DevelopmentConfig(Config):
     """
     Development configuration class.
     Inherits from Config and can override specific settings for development.
     """
-    print("Loading DevelopmentConfig...")
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
         f"mysql+pymysql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}"
@@ -123,7 +137,6 @@ class ProductionConfig(Config):
     Production configuration class.
     Inherits from Config and can override specific settings for production.
     """
-    print("Loading ProductionConfig...")
     DEBUG = False
     SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
         f"mysql+pymysql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}"
@@ -152,13 +165,19 @@ class TestingConfig(Config):
     Testing configuration class.
     Inherits from Config and can override specific settings for testing.
     """
-    print("Loading TestingConfig...")
     TESTING = True
-    # Use in-memory SQLite database for tests
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_DATABASE_URI = os.environ.get(
+        "TEST_DATABASE_URL",
+        f"sqlite:///{os.path.join(basedir, 'tests', '.pytest', 'studentx_test.sqlite')}"
+    )
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True
+    }
     WTF_CSRF_ENABLED = False  # Disable CSRF protection for testing
     LOG_FILE = 'app_test.log'
     LOG_FILE_MODE = 'w'  # Write to log file in testing mode
+    RATELIMIT_ENABLED = False
 
     def __init__(self):
         super().__init__()
@@ -168,21 +187,10 @@ class TestingConfig(Config):
         """
         Initialize the application with testing-specific settings.
         """
-        TestingConfig.TEST_DB_NAME = os.environ.get('TEST_DB_NAME') or save_config_from_input(
-            f"Enter your test database name (default: {Config.APP_NAME.lower()}_test): ", 'TEST_DB_NAME') or f"{Config.APP_NAME.lower()}_test"
+        test_db_url = os.environ.get("TEST_DATABASE_URL")
+        if test_db_url:
+            app.config['SQLALCHEMY_DATABASE_URI'] = test_db_url
 
-        # Default values for test database credentials
-        TestingConfig.TEST_DB_USER = os.environ.get('TEST_DB_USER') or save_config_from_input(
-            f"Enter your test database user (default: {Config.APP_NAME.lower()}_test_user): ", 'TEST_DB_USER') or f"{Config.APP_NAME.lower()}_test_user"
-        TestingConfig.TEST_DB_PASSWORD = os.environ.get(
-            'TEST_DB_PASSWORD') or save_config_from_input(
-            f"Enter your test database password (default: {Config.APP_NAME.lower()}_test_password): ", 'TEST_DB_PASSWORD') or f"{Config.APP_NAME.lower()}_test_password"
-        TestingConfig.TEST_DB_HOST = os.environ.get('TEST_DB_HOST') or save_config_from_input(
-            f"Enter your test database host (default: localhost): ", 'TEST_DB_HOST') or "localhost"
-        TestingConfig.TEST_DB_PORT = os.environ.get('TEST_DB_PORT') or save_config_from_input(
-            f"Enter your test database port (default: 3306): ", 'TEST_DB_PORT') or "3306"
-        TestingConfig.SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{TestingConfig.TEST_DB_USER}:{TestingConfig.TEST_DB_PASSWORD}@{TestingConfig.TEST_DB_HOST}:{TestingConfig.TEST_DB_PORT}/{TestingConfig.TEST_DB_NAME}' or \
-            "sqlite:///:test-db"
         print("Initializing TestingConfig...")
         if os.path.exists(env_file['testing']):
             app.logger.info(

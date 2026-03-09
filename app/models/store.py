@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, ForeignKey  # type: ignore
-from sqlalchemy.orm import relationship  # type: ignore
+from sqlalchemy.orm import relationship, mapped_column  # type: ignore
 
 from app.models.base_model import BaseModel
 from app import db  # type: ignore
@@ -8,15 +8,15 @@ from app import db  # type: ignore
 class Store(BaseModel, db.Model):
     __tablename__ = 'stores'
     # Foreign Keys
-    merchant_id = Column(String(64), ForeignKey(
+    merchant_id = mapped_column(String(64), ForeignKey(
         'merchants.id'), nullable=False)
 
     # Attributes
-    name = Column(String(32), nullable=False)
-    location = Column(String(64), nullable=False)
-    contact_email = Column(String(128), nullable=False)
-    contact_phone = Column(String(16), nullable=True)
-    manager_name = Column(String(64), nullable=True)
+    name = mapped_column(String(32), nullable=False)
+    location = mapped_column(String(64), nullable=False)
+    contact_email = mapped_column(String(128), nullable=False)
+    contact_phone = mapped_column(String(16), nullable=True)
+    manager_name = mapped_column(String(64), nullable=True)
 
     # *One
     merchant = relationship(

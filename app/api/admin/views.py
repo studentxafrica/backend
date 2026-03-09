@@ -6,8 +6,13 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, extract, case, and_, or_, distinct
 from sqlalchemy.sql import label
 from app.models import Administrator, Consumer, Merchant, Coupon, Offer, Category, Store, OfferView
+from app.models.student_business_application import (
+    APPLICATION_STATUS,
+    StudentBusinessApplication,
+)
 from app import db
 from typing import List
+from types import SimpleNamespace
 from app.utils import roles_required
 from app.email import send_email
 from config import config as config_class
@@ -32,10 +37,88 @@ def generate_temp_password(length=12):
     return ''.join(random.choice(chars) for _ in range(length))
 
 
+def get_or_create_student_owned_category():
+    student_owned_category = db.session.query(Category).filter(
+        Category.slug == "student-owned"
+    ).first()
+    if not student_owned_category:
+        student_owned_category = Category(
+            name="Student-Owned",
+            slug="student-owned",
+            image_url="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1200&q=80",
+            active=True,
+        )
+        db.session.add(student_owned_category)
+        db.session.flush()
+    return student_owned_category
+
+
+def serialize_student_business_application(application: StudentBusinessApplication):
+    return {
+        "id": application.id,
+        "status": application.status,
+        "businessName": application.business_name,
+        "businessType": application.business_type,
+        "businessDescription": application.business_description,
+        "businessEmail": application.business_email,
+        "businessPhone": application.business_phone,
+        "website": application.website,
+        "registrationNumber": application.registration_number,
+        "additionalNotes": application.additional_notes,
+        "reviewFeedback": application.review_feedback,
+        "submittedAt": application.created_at.isoformat() if application.created_at else None,
+        "reviewedAt": application.reviewed_at.isoformat() if application.reviewed_at else None,
+        "merchantId": application.merchant_id,
+        "student": {
+            "id": application.consumer.id if application.consumer else None,
+            "firstName": application.consumer.first_name if application.consumer else None,
+            "lastName": application.consumer.last_name if application.consumer else None,
+            "email": application.consumer.email if application.consumer else None,
+            "phone": application.consumer.phone if application.consumer else None,
+            "school": application.consumer.school if application.consumer else None,
+            "major": application.consumer.major if application.consumer else None,
+            "studentId": application.consumer.student_id if application.consumer else None,
+            "isVerified": application.consumer.verified if application.consumer else False,
+        },
+        "documents": [{
+            "id": doc.id,
+            "name": doc.document_name,
+            "type": doc.document_type,
+            "url": doc.document_url,
+            "size": doc.size,
+            "verified": doc.verified,
+            "uploadedAt": doc.upload_date.isoformat() if doc.upload_date else None,
+        } for doc in application.documents],
+    }
+
+
+def send_student_business_outcome_email(application: StudentBusinessApplication, action: str, feedback: str | None = None):
+    status_titles = {
+        "approve": "Approved",
+        "reject": "Not Approved",
+        "request": "More Information Needed",
+    }
+    student_name = application.consumer.first_name if application.consumer else "Student"
+    send_email(
+        to=[application.consumer.email],
+        subject=f"StudentX Business Application {status_titles.get(action, 'Update')}",
+        template="email/student_business_application_review",
+        context={
+            "student_name": student_name,
+            "business_name": application.business_name,
+            "status": action,
+            "feedback": feedback or "",
+            "merchant_portal_url": "https://merchant.studentx.co.ke/login",
+        }
+    )
+
+
 @admin.route('/merchants/register', methods=['POST'])
 def register_merchant():
-    data = request.get_json()
+    data = request.get_json() or {}
     email = data.get('email')
+    raw_is_student_owned = data.get('isStudentOwned', data.get('is_student_owned', False))
+    is_student_owned = str(raw_is_student_owned).lower() in {'1', 'true', 'yes', 'on'}
 
     if not email:
         return jsonify({'message': 'Email is required'}), 400
@@ -48,6 +131,10 @@ def register_merchant():
 
     # Generate temporary credentials
     temp_password = generate_temp_password()
+    category_id = None
+    if is_student_owned:
+        student_owned_category = get_or_create_student_owned_category()
+        category_id = student_owned_category.id
 
     # Create merchant with "pending" status
     merchant = Merchant(
@@ -55,6 +142,7 @@ def register_merchant():
         name=data.get('name', email.split('@')[0]),
         email=email,
         password=temp_password,
+        category_id=category_id,
         # status='pending',
         # is_active=False,
         # temp_password=temp_password,  # Store temporarily for the email
@@ -69,7 +157,8 @@ def register_merchant():
 
         return jsonify({
             'message': 'Merchant registration initiated. Credentials sent to email.',
-            'merchant_id': merchant.id
+            'merchant_id': merchant.id,
+            'isStudentOwned': is_student_owned,
         }), 201
     except Exception as e:
         # Rollback if email fails
@@ -140,7 +229,7 @@ def get_dashboard_data():
     } for data in monthly_data]
 
     # Category distribution
-    category_distribution = db.session.query(
+    category_distribution_rows = db.session.query(
         Category.name,
         func.count(Coupon.id).label('count'),
         Category.id
@@ -157,11 +246,17 @@ def get_dashboard_data():
         func.count(Coupon.id).desc()
     ).limit(5).all()
 
-    total_coupons = sum([cd.count for cd in category_distribution]) or 1
+    category_distribution = [{
+        'name': name,
+        'count': (count or 0),
+        'id': category_id
+    } for name, count, category_id in category_distribution_rows]
+
+    total_coupons = sum(cd['count'] for cd in category_distribution) or 1
     category_data = [{
-        'name': cd.name,
-        'value': round((cd.count / total_coupons) * 100, 1),
-        'color': get_category_color(cd.name)
+        'name': cd['name'],
+        'value': round((cd['count'] / total_coupons) * 100, 1),
+        'color': get_category_color(cd['name'])
     } for cd in category_distribution]
 
     # Recent activity (combines multiple event types)
@@ -298,7 +393,7 @@ def get_user_management_data():
             func.coalesce(func.sum(Coupon.redeemed_amount),
                           0).label('total_savings'),
             func.round(
-                case([
+                case(
                     (Consumer.phone.isnot(None), 10),
                     (Consumer.student_id.isnot(None), 10),
                     (Consumer.school.isnot(None), 10),
@@ -307,8 +402,7 @@ def get_user_management_data():
                     (Consumer.location.isnot(None), 10),
                     (Consumer.profile_picture.isnot(None), 10),
                     (Consumer.bio.isnot(None), 10),
-                    (Consumer.verified_at.isnot(None), 10)
-                ], else_=0)
+                    (Consumer.verified_at.isnot(None), 10), else_=0)
             ).label('profile_complete')
         ).outerjoin(
             Coupon, Coupon.consumer_id == Consumer.id
@@ -327,24 +421,23 @@ def get_user_management_data():
             Consumer.created_at.desc()).limit(100).all()
 
         user_data = [{
-            'id': s.id,
-            'name': f"{s.first_name} {s.last_name}",
-            'email': s.email,
-            'school': s.school,
-            'major': s.major,
-            'year': s.graduation_year,
-            'verified': s.verified_at is not None and s.verification_status == VerificationRequestStatus.APPROVED,
-            'avatar': s.profile_picture or '',
-            'profileComplete': s.profile_complete,
-            'verificationStatus': s.verification_status.value if s.verification_status else 'pending',
-            'verificationReminderSentOn': s.verification_reminder_sent_on.replace(tzinfo=timezone.utc).isoformat() if s.verification_reminder_sent_on else None,
-            'verificationReminderSent': s.verification_reminder_sent_on is not None and s.verification_reminder_sent_on.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc) - timedelta(days=7),
-            'couponsUsed': s.coupons_used,
-            # Convert cents to dollars
-            'totalSavings': (s.total_savings or 0) / 100,
-            'joinDate': s.created_at.isoformat(),
+            'id': user.id,
+            'name': f"{user.first_name} {user.last_name}",
+            'email': user.email,
+            'school': user.school,
+            'major': user.major,
+            'year': user.graduation_year,
+            'verified': user.verified_at is not None and user.verification_status == VerificationRequestStatus.APPROVED,
+            'avatar': user.profile_picture or '',
+            'profileComplete': user.profile_complete,
+            'verificationStatus': user.verification_status.value if user.verification_status else 'pending',
+            'verificationReminderSentOn': user.verification_reminder_sent_on.replace(tzinfo=timezone.utc).isoformat() if user.verification_reminder_sent_on else None,
+            'verificationReminderSent': user.verification_reminder_sent_on is not None and user.verification_reminder_sent_on.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc) - timedelta(days=7),
+            'couponsUsed': user.coupons_used or 0,
+            'totalSavings': float(user.total_savings or 0),
+            'joinDate': user.created_at.isoformat(),
             'type': 'student'
-        } for s in users]
+        } for user in users]
 
     else:
         # Merchants query
@@ -412,7 +505,8 @@ def get_user_management_data():
 @roles_required('admin')
 def request_verification(user_id):
     """Endpoint to request verification for a student"""
-    student: Consumer = db.session.query(Consumer).get_or_404(user_id)
+    student: Consumer | None = db.session.query(
+        Consumer).filter_by(id=user_id).first()
     if not student:
         return jsonify({'success': False, 'message': 'Student not found'}), 404
     if student.verified_at:
@@ -447,7 +541,9 @@ def request_verification(user_id):
 @roles_required('admin')
 def approve_merchant(merchant_id):
     """Endpoint to approve a merchant"""
-    merchant = db.session.query(Merchant).get_or_404(merchant_id)
+    merchant = db.session.query(Merchant).filter_by(id=merchant_id).first()
+    if not merchant:
+        return jsonify({'success': False, 'message': 'Merchant not found'}), 404
     if merchant.approved_on:
         return jsonify({'success': False, 'message': 'Merchant already approved'}), 400
 
@@ -464,7 +560,7 @@ def approve_merchant(merchant_id):
 @roles_required('admin')
 def reject_merchant(merchant_id):
     """Endpoint to reject a merchant"""
-    merchant = db.session.query(Merchant).get_or_404(merchant_id)
+    merchant = db.session.query(Merchant).filter_by(id=merchant_id).first()
     if not merchant:
         return jsonify({'success': False, 'message': 'The specified merchant could not be found'}), 404
 
@@ -475,6 +571,159 @@ def reject_merchant(merchant_id):
         'success': True,
         'message': f'Merchant {merchant.name} rejected successfully'
     })
+
+
+@admin.route('/student-business-applications', methods=['GET'])
+@roles_required('admin')
+def list_student_business_applications():
+    status_filter = request.args.get('status', 'all')
+    search_term = (request.args.get('search') or '').strip().lower()
+
+    query = db.session.query(StudentBusinessApplication).join(
+        Consumer, StudentBusinessApplication.consumer_id == Consumer.id
+    )
+
+    if status_filter != 'all':
+        query = query.filter(StudentBusinessApplication.status == status_filter)
+
+    if search_term:
+        query = query.filter(
+            or_(
+                func.lower(StudentBusinessApplication.business_name).contains(search_term),
+                func.lower(StudentBusinessApplication.business_type).contains(search_term),
+                func.lower(Consumer.first_name).contains(search_term),
+                func.lower(Consumer.last_name).contains(search_term),
+                func.lower(Consumer.email).contains(search_term),
+            )
+        )
+
+    applications = query.order_by(StudentBusinessApplication.created_at.desc()).all()
+
+    stats = {
+        "total": db.session.query(func.count(StudentBusinessApplication.id)).scalar() or 0,
+        "pending": db.session.query(func.count(StudentBusinessApplication.id)).filter(
+            StudentBusinessApplication.status == APPLICATION_STATUS["PENDING"]
+        ).scalar() or 0,
+        "requested": db.session.query(func.count(StudentBusinessApplication.id)).filter(
+            StudentBusinessApplication.status == APPLICATION_STATUS["REQUESTED"]
+        ).scalar() or 0,
+        "approved": db.session.query(func.count(StudentBusinessApplication.id)).filter(
+            StudentBusinessApplication.status == APPLICATION_STATUS["APPROVED"]
+        ).scalar() or 0,
+        "rejected": db.session.query(func.count(StudentBusinessApplication.id)).filter(
+            StudentBusinessApplication.status == APPLICATION_STATUS["REJECTED"]
+        ).scalar() or 0,
+    }
+
+    return jsonify({
+        "success": True,
+        "stats": stats,
+        "data": [serialize_student_business_application(application) for application in applications]
+    }), 200
+
+
+@admin.route('/student-business-applications/<application_id>', methods=['GET'])
+@roles_required('admin')
+def get_student_business_application(application_id):
+    application = db.session.query(StudentBusinessApplication).filter(
+        StudentBusinessApplication.id == application_id
+    ).first()
+
+    if not application:
+        return jsonify({
+            "success": False,
+            "message": "Application not found"
+        }), 404
+
+    return jsonify({
+        "success": True,
+        "data": serialize_student_business_application(application)
+    }), 200
+
+
+@admin.route('/student-business-applications/<application_id>/review', methods=['POST'])
+@roles_required('admin')
+def review_student_business_application(application_id):
+    data = request.get_json() or {}
+    action = data.get("action")
+    feedback = (data.get("feedback") or "").strip()
+
+    if action not in {"approve", "reject", "request"}:
+        return jsonify({
+            "success": False,
+            "message": "Invalid review action"
+        }), 400
+
+    application = db.session.query(StudentBusinessApplication).filter(
+        StudentBusinessApplication.id == application_id
+    ).first()
+    if not application:
+        return jsonify({
+            "success": False,
+            "message": "Application not found"
+        }), 404
+    if application.status == APPLICATION_STATUS["APPROVED"]:
+        return jsonify({
+            "success": False,
+            "message": "This application has already been approved"
+        }), 400
+
+    reviewer: Administrator | None = g.user if isinstance(g.user, Administrator) else None
+    application.reviewer_id = reviewer.id if reviewer else None
+    application.reviewed_at = datetime.now(timezone.utc)
+    application.review_feedback = feedback or None
+
+    if action == "approve":
+        student_owned_category = get_or_create_student_owned_category()
+        merchant_email = application.business_email or application.consumer.email
+        merchant_name = application.business_name or f"{application.consumer.first_name} {application.consumer.last_name}"
+        temp_password = generate_temp_password()
+
+        merchant = db.session.query(Merchant).filter(
+            Merchant.email == merchant_email
+        ).first()
+
+        if not merchant:
+            merchant = Merchant(
+                name=merchant_name,
+                email=merchant_email,
+                password=temp_password,
+                phone=application.business_phone or application.consumer.phone,
+                website=application.website,
+                category_id=student_owned_category.id,
+            )
+            db.session.flush()
+        else:
+            merchant.password = temp_password
+            merchant.name = merchant_name or merchant.name
+            merchant.phone = application.business_phone or merchant.phone
+            merchant.website = application.website or merchant.website
+            merchant.category_id = student_owned_category.id
+
+        merchant.approved_on = datetime.now(timezone.utc)
+        application.status = APPLICATION_STATUS["APPROVED"]
+        application.merchant_id = merchant.id
+        application.invited_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        send_merchant_credentials(merchant.email, temp_password)
+        send_student_business_outcome_email(application, "approve", feedback)
+
+    elif action == "reject":
+        application.status = APPLICATION_STATUS["REJECTED"]
+        db.session.commit()
+        send_student_business_outcome_email(application, "reject", feedback)
+
+    else:
+        application.status = APPLICATION_STATUS["REQUESTED"]
+        db.session.commit()
+        send_student_business_outcome_email(application, "request", feedback)
+
+    return jsonify({
+        "success": True,
+        "message": "Application review submitted successfully",
+        "data": serialize_student_business_application(application)
+    }), 200
 
 
 @admin.route('/offers', methods=['GET'])
@@ -516,7 +765,7 @@ def get_offer_management_data():
             Offer.coupon_limit,
             label('claimed', func.count(Coupon.id)),
             label('redeemed', func.count(
-                case([(Coupon.status == 'redeemed', Coupon.id)], else_=None)
+                case((Coupon.status == 'redeemed', Coupon.id), else_=None)
             )),
             Offer.start_date,
             Offer.end_date,
@@ -555,31 +804,31 @@ def get_offer_management_data():
             Offer.start_date.desc()).limit(100).all()
 
         offer_data = [{
-            'id': o.id,
-            'title': o.title,
+            'id': offer.id,
+            'title': offer.title,
             'merchant': {
-                'name': o.merchant,
-                'id': o.merchant_id if hasattr(o, 'merchant_id') else None,
-                'logo': o.merchant.logo if hasattr(o.merchant, 'logo') else None
+                'name': offer.merchant.name if hasattr(offer.merchant, 'name') else None,
+                'id': offer.merchant_id if hasattr(offer, 'merchant_id') else None,
+                'logo': offer.merchant.logo if hasattr(offer.merchant, 'logo') else None
             },
             'category': {
-                'name': o.category.name if hasattr(o.category, 'name') else None,
-                'id': o.category.id if hasattr(o.category, 'id') else None
-            } if o.category else None,
-            'discountType': o.discount_type,
-            'discountValue': o.discount_value,
-            'couponLimit': o.coupon_limit,
-            'claimed': len([coupon for coupon in o.coupons if coupon.status == 'active']) if hasattr(o, 'coupons') else 0,
-            'redeemed': len([coupon for coupon in o.coupons if coupon.status == 'redeemed']) if hasattr(o, 'coupons') else 0,
-            'startDate': o.start_date.isoformat(),
-            'currency:': o.currency if hasattr(o, 'currency') else 'USD',
-            'endDate': o.end_date.isoformat(),
-            'status': o.status,
-            'revenue': (o.revenue or 0) / 100,
-            'views': o.view_count,
-            'coverImage': o.cover_image,
-            'description': o.description
-        } for o in offers]
+                'name': offer.category.name if hasattr(offer.category, 'name') else None,
+                'id': offer.category.id if hasattr(offer.category, 'id') else None
+            } if offer.category else None,
+            'discountType': offer.discount_type,
+            'discountValue': offer.discount_value,
+            'couponLimit': offer.coupon_limit,
+            'claimed': len([coupon for coupon in offer.coupons if coupon.status == 'active']) if hasattr(offer, 'coupons') else 0,
+            'redeemed': len([coupon for coupon in offer.coupons if coupon.status == 'redeemed']) if hasattr(offer, 'coupons') else 0,
+            'startDate': offer.start_date.isoformat(),
+            'currency:': offer.currency if hasattr(offer, 'currency') else 'USD',
+            'endDate': offer.end_date.isoformat(),
+            'status': offer.status,
+            'revenue': 0,  # TODO: Calculate revenue from redeemed coupons
+            'views': offer.view_count,
+            'coverImage': offer.cover_image,
+            'description': offer.description
+        } for offer in offers]
 
         return jsonify({
             'stats': stats,
@@ -652,7 +901,7 @@ def get_offer_management_data():
 @roles_required('admin')
 def activate_offer(offer_id):
     """Endpoint to activate an offer"""
-    offer: Offer = db.session.query(Offer).get_or_404(offer_id)
+    offer: Offer | None = db.session.query(Offer).filter_by(id=offer_id).first()
     if not offer:
         return jsonify({
             'message': 'Offer not found',
@@ -689,7 +938,8 @@ def activate_offer(offer_id):
 @roles_required('admin')
 def deactivate_offer(offer_id):
     """Endpoint to deactivate an offer"""
-    offer: Offer = db.session.query(Offer).get_or_404(offer_id)
+    offer: Offer | None = db.session.query(
+        Offer).filter_by(id=offer_id).first()
     if not offer:
         return jsonify({
             'message': 'Offer not found',
@@ -728,9 +978,10 @@ def delete_offer(offer_id):
     """Endpoint to delete an offer"""
     user = g.user
     user_role = g.user_role
-    offer = db.session.query(Offer).filter_by(
-        Offer.merchant_id == user.id if user_role == 'merchant' else None
-    ).get_or_404(offer_id)
+    query = db.session.query(Offer).filter(Offer.id == offer_id)
+    if user_role == 'merchant':
+        query = query.filter(Offer.merchant_id == user.id)
+    offer = query.first()
     if not offer:
         return jsonify({
             'message': 'Offer not found',
@@ -750,9 +1001,12 @@ def delete_offer(offer_id):
 @roles_required('admin')
 def expire_coupon(coupon_id):
     """Endpoint to manually expire a coupon"""
-    coupon = db.session.query(Coupon).get_or_404(coupon_id)
+    coupon = db.session.query(Coupon).filter_by(id=coupon_id).first()
+    if not coupon:
+        return jsonify({'success': False, 'message': 'Coupon not found'}), 404
+
     if coupon.status != 'active':
-        return jsonify({'success': False, 'message': 'Coupon is not active'}), 400
+        return jsonify({'success': False, 'message': 'Coupon is not redeemable. It may be expired, already redeemed, or revoked.'}), 400
 
     coupon.status = 'expired'
     db.session.commit()
@@ -877,8 +1131,8 @@ def get_analytics_data():
     # Build cumulative counts for students and merchants
     cumulative_students = 0
     cumulative_merchants = 0
-    student_months = {(int(row.year), int(row.month)): row.students for row in student_counts}
-    merchant_months = {(int(row.year), int(row.month)): row.merchants for row in merchant_counts}
+    student_months = {(int(row.year), int(row.month))                      : row.students for row in student_counts}
+    merchant_months = {(int(row.year), int(row.month))                       : row.merchants for row in merchant_counts}
 
     # Prepare monthly_data with all months in the last 6 months
     monthly_data = []
@@ -895,14 +1149,13 @@ def get_analytics_data():
         cumulative_merchants += merchant_months.get((year, month), 0)
 
         # Compose row
-        class Row:
-            pass
-        row = Row()
-        row.month = month
-        row.revenue = revenue
-        row.coupons = coupons
-        row.students = cumulative_students
-        row.merchants = cumulative_merchants
+        row = SimpleNamespace(
+            month=month,
+            revenue=revenue,
+            coupons=coupons,
+            students=cumulative_students,
+            merchants=cumulative_merchants
+        )
         monthly_data.append(row)
 
     month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May',
@@ -920,7 +1173,7 @@ def get_analytics_data():
         func.dayofweek(Coupon.redeemed_at).label('day_of_week'),
         func.count(Coupon.id).label('redemptions'),
         func.count(
-            case([(Coupon.created_at.isnot(None), Coupon.id)], else_=0)
+            case((Coupon.created_at.isnot(None), Coupon.id), else_=None)
         ).label('claims')
     ).filter(
         Coupon.redeemed_at >= last_30_days
@@ -948,7 +1201,7 @@ def get_analytics_data():
         Category.name,
         func.count(Coupon.id).label('coupons'),
         func.sum(Coupon.redeemed_amount).label('revenue'),
-        (func.sum(case([(Coupon.status == 'redeemed', 1)], else_=0)) /
+        (func.sum(case((Coupon.status == 'redeemed', 1), else_=0)) /
          func.count(Coupon.id) * 100)
     ).join(
         Offer, Offer.category_id == Category.id
@@ -975,7 +1228,7 @@ def get_analytics_data():
         Merchant.name,
         func.sum(Coupon.redeemed_amount).label('revenue'),
         func.count(Coupon.id).label('coupons'),
-        (func.sum(case([(Coupon.status == 'redeemed', 1)], else_=0)) /
+        (func.sum(case((Coupon.status == 'redeemed', 1), else_=0)) /
          func.count(Coupon.id) * 100)
     ).join(
         Offer, Offer.merchant_id == Merchant.id

@@ -1,8 +1,11 @@
+from typing import Tuple, Any  # type: ignore
+from sqlalchemy import Row
 from app.utils import roles_required
 from urllib.parse import urlparse
 import os
 import json
 from collections import defaultdict
+from types import SimpleNamespace
 from dateutil.relativedelta import relativedelta  # type: ignore
 from datetime import datetime, timedelta
 from sqlalchemy import func, extract, case, and_, or_, distinct  # type: ignore
@@ -16,6 +19,35 @@ from app.models.coupon import Coupon  # type: ignore
 from app.models.consumer import Consumer  # type: ignore
 from app.models.store import Store  # type: ignore
 from typing import List
+
+STUDENT_OWNED_CATEGORY_SLUG = "student-owned"
+STUDENT_OWNED_CATEGORY_NAME = "Student-Owned"
+STUDENT_OWNED_CATEGORY_IMAGE = "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1200&q=80"
+
+
+def _is_student_owned_merchant(merchant: Merchant | None) -> bool:
+    if not merchant:
+        return False
+    return bool(
+        getattr(merchant, "category", None)
+        and getattr(merchant.category, "slug", None) == STUDENT_OWNED_CATEGORY_SLUG
+    )
+
+
+def _get_or_create_student_owned_category() -> Category:
+    student_owned_category = db.session.query(Category).filter(
+        Category.slug == STUDENT_OWNED_CATEGORY_SLUG
+    ).first()
+    if not student_owned_category:
+        student_owned_category = Category(
+            name=STUDENT_OWNED_CATEGORY_NAME,
+            slug=STUDENT_OWNED_CATEGORY_SLUG,
+            image_url=STUDENT_OWNED_CATEGORY_IMAGE,
+            active=True,
+        )
+        db.session.add(student_owned_category)
+        db.session.flush()
+    return student_owned_category
 
 
 @user.route('/merchant/me', methods=['GET'])
@@ -38,7 +70,13 @@ def get_current_merchant_profile():
         'country': merchant.country,
         'zipcode': merchant.zip_code,
         'isApproved': merchant.approved,
+        'isStudentOwned': _is_student_owned_merchant(merchant),
         'offersCount': len(merchant.offers),
+        'category': {
+            'id': merchant.category.id if merchant.category else None,
+            'name': merchant.category.name if merchant.category else None,
+            'slug': merchant.category.slug if merchant.category else None,
+        }
     }
     return jsonify({
         "message": "Merchant profile retrieved successfully",
@@ -63,6 +101,18 @@ def update_merchant_profile():
     merchant: Merchant = g.user
     if not merchant:
         return jsonify({"error": "Merchant not found"}), 401
+    raw_is_student_owned = user_data.pop(
+        'isStudentOwned',
+        user_data.pop('is_student_owned', None)
+    )
+    if raw_is_student_owned is not None:
+        is_student_owned = str(raw_is_student_owned).lower() in {'1', 'true', 'yes', 'on'}
+        if is_student_owned:
+            student_owned_category = _get_or_create_student_owned_category()
+            merchant.category_id = student_owned_category.id
+        elif _is_student_owned_merchant(merchant):
+            merchant.category_id = None
+
     ACCEPTED_PROFILE_UPDATE_FIELDS = [
         'name', 'email', 'website', 'phone', 'logo', 'preferredCurrency',
         'address', 'city', 'country', 'zipcode'
@@ -73,13 +123,14 @@ def update_merchant_profile():
             if key == 'logo' and val and not val.startswith('http'):
                 # If logo is a local file, upload it to Cloudinary
                 import cloudinary.uploader  # type: ignore
-                upload_result = cloudinary.uploader.upload(val, folder='merchants/logos/')
+                upload_result = cloudinary.uploader.upload(
+                    val, folder='merchants/logos/')
                 setattr(merchant, key, upload_result['secure_url'])
             else:
                 setattr(merchant, key, val)
             if key == 'email' and val != merchant.email:
                 merchant.email_verified_on = None
-            
+
     merchant.save()
     merchant_data = {
         'id': merchant.id,
@@ -95,8 +146,14 @@ def update_merchant_profile():
         'country': merchant.country,
         'zipcode': merchant.zip_code,
         'isApproved': merchant.approved,
+        'isStudentOwned': _is_student_owned_merchant(merchant),
         'emailVerified': merchant.email_verified,
         'offersCount': len(merchant.offers),
+        'category': {
+            'id': merchant.category.id if merchant.category else None,
+            'name': merchant.category.name if merchant.category else None,
+            'slug': merchant.category.slug if merchant.category else None,
+        }
     }
     return jsonify({
         "message": "Update merchant profile",
@@ -260,7 +317,7 @@ def edit_merchant_offer(id):
         return jsonify({"message": "Merchant not found"}), 401
     from app.models.offer import Offer
 
-    offer: Offer = db.session.query(Offer).filter_by(
+    offer: Offer | None = db.session.query(Offer).filter_by(
         id=id, merchant_id=merchant.id).first()
     if not offer:
         return jsonify({"message": "Offer not found"}), 404
@@ -270,7 +327,7 @@ def edit_merchant_offer(id):
         'discount_value', 'currency', 'category_id', 'coupon_limit',
         'status', 'start_date', 'end_date', 'terms_and_conditions', 'tags'
     ]
-    
+
     data = request.get_json()
 
     import cloudinary.uploader  # type: ignore
@@ -296,7 +353,6 @@ def edit_merchant_offer(id):
             upload_result = cloudinary.uploader.upload(
                 cover_image, folder='offers/')
             data['cover_image'] = upload_result['secure_url']
-
 
     if not data:
         return jsonify({"error": "No data provided"}), 400
@@ -343,7 +399,9 @@ def edit_merchant_offer(id):
                 'name': offer.merchant.name,
                 'logo': offer.merchant.logo,
                 'website': offer.merchant.website,
+                'isStudentOwned': _is_student_owned_merchant(offer.merchant),
             },
+            'isStudentOwned': _is_student_owned_merchant(offer.merchant),
             'coupons': {
                 'total': offer.coupon_limit,
                 'redeemed': len([coupon for coupon in offer.coupons if coupon.redeemed]),
@@ -393,7 +451,9 @@ def get_merchant_offers():
             'name': offer.merchant.name,
             'logo': offer.merchant.logo,
             'website': offer.merchant.website,
+            'isStudentOwned': _is_student_owned_merchant(offer.merchant),
         },
+        'isStudentOwned': _is_student_owned_merchant(offer.merchant),
         'coupons': {
             'total': offer.coupon_limit,
             'redeemed': len([coupon for coupon in offer.coupons if coupon.redeemed]),
@@ -485,32 +545,51 @@ def get_merchant_offer_analytics():
     coupon_stats = db.session.query(
         func.sum(Offer.coupon_limit).label('total_coupons'),
         func.sum(Coupon.id.isnot(None)).label('claimed_coupons'),
-        func.sum(case([(Coupon.status == 'redeemed', 1)], else_=0)).label(
+        func.sum(case((Coupon.status == 'redeemed', 1), else_=0)).label(
             'redeemed_coupons')
     ).join(Coupon, Coupon.offer_id == Offer.id, isouter=True).filter(
         Offer.merchant_id == merchant.id
     ).first()
+    if not coupon_stats:
+        coupon_stats = SimpleNamespace(
+            total_coupons=0,
+            claimed_coupons=0,
+            redeemed_coupons=0
+        )
 
     # 3. Revenue Calculations
     revenue_stats = db.session.query(
         func.sum(Offer.revenue_generated).label('total_revenue'),
         func.avg(Offer.revenue_generated).label('avg_revenue_per_offer'),
-        func.avg(case([(Coupon.status == 'redeemed', Offer.revenue_generated /
-                 Coupon.id.isnot(None))], else_=0)).label('avg_revenue_per_redemption')
+        func.avg(case((Coupon.status == 'redeemed', Offer.revenue_generated /
+                 Coupon.id.isnot(None)), else_=0)).label('avg_revenue_per_redemption')
     ).join(Coupon, Coupon.offer_id == Offer.id, isouter=True).filter(
         Offer.merchant_id == merchant.id
     ).first()
+    if not revenue_stats:
+        revenue_stats = SimpleNamespace(
+            total_revenue=0,
+            avg_revenue_per_offer=0,
+            avg_revenue_per_redemption=0
+        )
 
     # 4. Performance Metrics
     performance_metrics = db.session.query(
         func.sum(Offer.view_count).label('total_views'),
         func.sum(Offer.unique_visitors).label('unique_visitors'),
-        func.avg(case([(Offer.view_count > 0, Offer.unique_visitors /
-                 Offer.view_count * 100)], else_=0)).label('click_through_rate'),
+        func.avg(case((Offer.view_count > 0, Offer.unique_visitors /
+                 Offer.view_count * 100), else_=0)).label('click_through_rate'),
         func.avg(Offer.avg_redemption_time_hours).label('avg_redemption_time')
     ).filter(
         Offer.merchant_id == merchant.id
     ).first()
+    if not performance_metrics:
+        performance_metrics = SimpleNamespace(
+            total_views=0,
+            unique_visitors=0,
+            click_through_rate=0,
+            avg_redemption_time=0
+        )
 
     # 5. Category Distribution
     category_distribution = db.session.query(
@@ -529,7 +608,7 @@ def get_merchant_offer_analytics():
         extract('year', Coupon.created_at).label('year'),
         extract('month', Coupon.created_at).label('month'),
         func.count(Coupon.id).label('claimed'),
-        func.count(case([(Coupon.status == 'redeemed', 1)],
+        func.count(case((Coupon.status == 'redeemed', 1),
                    else_=None)).label('redeemed')
     ).join(Offer, Offer.id == Coupon.offer_id).filter(
         Offer.merchant_id == merchant.id,
@@ -555,12 +634,12 @@ def get_merchant_offer_analytics():
         })
 
     # 7. Top Performing Offers (by claims)
-    top_performing_offers: List[Offer] = db.session.query(
+    top_performing_offers: List[Row[Tuple]] = db.session.query(
         Offer.title,
         Offer.view_count,
         Offer.unique_visitors,
         func.count(Coupon.id).label('claims'),
-        func.count(case([(Coupon.status == 'redeemed', 1)],
+        func.count(case((Coupon.status == 'redeemed', 1),
                    else_=None)).label('redeemed'),
         Offer.revenue_generated
     ).join(Coupon, Coupon.offer_id == Offer.id, isouter=True).filter(
@@ -627,13 +706,13 @@ def get_general_merchant_analytics():
     start_date = end_date - timedelta(days=days)
 
     # 1. Basic offer statistics
-    offers: List[Offer] = db.session.query(
+    offers: List[Row[Tuple[str, str, int, int, Any]]] = db.session.query(
         Offer.id,
         Offer.title,
         func.count(Coupon.id).label('redemptions'),
         Offer.view_count,
-        func.sum(case([(Coupon.status == 'redeemed',
-                 Offer.revenue_generated)], else_=0)).label('revenue')
+        func.sum(case((Coupon.status == 'redeemed',
+                 Offer.revenue_generated), else_=0)).label('revenue')
     ).join(Coupon, Coupon.offer_id == Offer.id, isouter=True).filter(
         Offer.merchant_id == merchant.id,
     ).group_by(Offer.id).all()
@@ -731,17 +810,17 @@ def get_general_merchant_analytics():
     # 6. Customer metrics
     customer_metrics = db.session.query(
         func.count(distinct(Coupon.consumer_id)).label('total_customers'),
-        func.count(case([(
+        func.count(case((
             Consumer.created_at >= start_date,
             1
-        )], else_=None)).label('new_customers'),
-        func.count(case([(
+        ), else_=None)).label('new_customers'),
+        func.count(case((
             and_(
                 Consumer.created_at < start_date,
                 Coupon.redeemed_at >= start_date
             ),
             1
-        )], else_=None)).label('repeat_customers')
+        ), else_=None)).label('repeat_customers')
     ).join(Consumer, Consumer.id == Coupon.consumer_id).join(
         Offer, Offer.id == Coupon.offer_id
     ).filter(
@@ -750,6 +829,13 @@ def get_general_merchant_analytics():
         Coupon.redeemed_at >= start_date,
         Coupon.redeemed_at <= end_date
     ).first()
+
+    if not customer_metrics:
+        customer_metrics = SimpleNamespace(
+            total_customers=0,
+            new_customers=0,
+            repeat_customers=0
+        )
 
     # 7. Individual redemptions for detailed view
     individual_redemptions = db.session.query(

@@ -1,14 +1,14 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from faker import Faker
-from typing import List
+from typing import List, Dict, Any
 from sqlalchemy.exc import IntegrityError  # type: ignore
-from datetime import timedelta, datetime, timezone
-from app.models.offer import Offer
+from app.models.offer import Offer, DISCOUNT_TYPES, OFFER_STATUS, USAGE_TYPES
 from app.models.merchant import Merchant
 from app.models import Category
 from app import db
 from . import get_random_pexels_image
 import random
+import uuid
 
 fake = Faker()
 
@@ -85,8 +85,6 @@ def edit_offers(field):
         offer.save()
 
 
-# These would come from your actual SQLAlchemy models
-DISCOUNT_TYPES = ['percentage', 'fixed_amount', 'buy_one_get_one', 'free_item']
 CURRENCIES = ['BBD', 'LBP', 'KHR', 'PEN', 'SEK', 'TZS', 'CLP', 'NAD', 'EUR']
 CATEGORIES = db.session.query(Category).all()
 
@@ -198,7 +196,7 @@ def seed_offers(number: int = 10):
             "description": fake.text(max_nb_chars=200),
             "slug": fake.slug(),
             "cover_image": get_random_pexels_image(),
-            "discount_type": fake.random_element(elements=("percentage", "fixed_amount", "buy_one_get_one", "free_item")),
+            "discount_type": fake.random_element(elements=tuple(DISCOUNT_TYPES.values())),
             "discount_value": fake.random_int(min=5, max=50),
             "currency": fake.currency_code(),
             "coupon_limit": fake.random_int(min=10, max=100),
@@ -217,3 +215,164 @@ def seed_offers(number: int = 10):
             db.session.commit()
         except IntegrityError as e:
             db.session.rollback()
+
+
+def seed_offer_variants():
+    """
+    Seed the database with all possible offer variants based on known enums.
+    """
+    merchants = db.session.query(Merchant).all()
+    if not merchants:
+        return
+
+    categories = db.session.query(Category).all()
+
+    discount_values = {
+        DISCOUNT_TYPES["PERCENTAGE"]: 20,
+        DISCOUNT_TYPES["FIXED_AMOUNT"]: 10,
+        DISCOUNT_TYPES["BUY_ONE_GET_ONE"]: 50,
+        DISCOUNT_TYPES["FREE_ITEM"]: 25,
+    }
+
+    redemption_types = ["in-store", "online", "both"]
+    featured_modes = ["none", "highlighted", "featured", "both"]
+
+    abbrev = {
+        "discount": {
+            DISCOUNT_TYPES["PERCENTAGE"]: "pct",
+            DISCOUNT_TYPES["FIXED_AMOUNT"]: "fix",
+            DISCOUNT_TYPES["BUY_ONE_GET_ONE"]: "bogo",
+            DISCOUNT_TYPES["FREE_ITEM"]: "free",
+        },
+        "status": {
+            OFFER_STATUS["ACTIVE"]: "act",
+            OFFER_STATUS["INACTIVE"]: "ina",
+            OFFER_STATUS["EXPIRED"]: "exp",
+            OFFER_STATUS["SOLD_OUT"]: "sold",
+            OFFER_STATUS["SUSPENDED"]: "susp",
+        },
+        "redeem": {"in-store": "store", "online": "onl", "both": "both"},
+        "usage": {
+            USAGE_TYPES["SINGLE_USE"]: "sng",
+            USAGE_TYPES["MULTI_USE"]: "mul",
+            USAGE_TYPES["UNLIMITED"]: "unl",
+            USAGE_TYPES["TIERED"]: "trd",
+        },
+        "feature": {"none": "n", "highlighted": "h", "featured": "f", "both": "b"},
+    }
+
+    def usage_fields(usage_type: str) -> Dict[str, Any]:
+        if usage_type == USAGE_TYPES["SINGLE_USE"]:
+            return {
+                "usage_type": usage_type,
+                "max_claims_per_user": 1,
+                "cooldown_period_hours": None,
+                "tier_progression": None,
+            }
+        if usage_type == USAGE_TYPES["MULTI_USE"]:
+            return {
+                "usage_type": usage_type,
+                "max_claims_per_user": 3,
+                "cooldown_period_hours": 24,
+                "tier_progression": None,
+            }
+        if usage_type == USAGE_TYPES["UNLIMITED"]:
+            return {
+                "usage_type": usage_type,
+                "max_claims_per_user": None,
+                "cooldown_period_hours": 12,
+                "tier_progression": None,
+            }
+        if usage_type == USAGE_TYPES["TIERED"]:
+            return {
+                "usage_type": usage_type,
+                "max_claims_per_user": 6,
+                "cooldown_period_hours": None,
+                "tier_progression": {
+                    "tiers": [
+                        {"min_usage": 0, "discount_multiplier": 1.0, "name": "Bronze"},
+                        {"min_usage": 3, "discount_multiplier": 1.5, "name": "Silver"},
+                        {"min_usage": 5, "discount_multiplier": 2.0, "name": "Gold"},
+                    ]
+                },
+            }
+        return {
+            "usage_type": usage_type,
+            "max_claims_per_user": 1,
+            "cooldown_period_hours": None,
+            "tier_progression": None,
+        }
+
+    offers_to_create: List[Offer] = []
+    now = datetime.now(timezone.utc)
+    idx = 0
+
+    for discount_type in DISCOUNT_TYPES.values():
+        for status in OFFER_STATUS.values():
+            for redemption_type in redemption_types:
+                for usage_type in USAGE_TYPES.values():
+                    for feature_mode in featured_modes:
+                        merchant = merchants[idx % len(merchants)]
+                        category_id = merchant.category_id or (categories[idx % len(categories)].id if categories else None)
+
+                        if status == OFFER_STATUS["EXPIRED"]:
+                            start_date = now - timedelta(days=30)
+                            highlighted_until = start_date + timedelta(days=2) if feature_mode in ["highlighted", "both"] else None
+                            featured_base = highlighted_until or start_date
+                            featured_until = featured_base + timedelta(days=1) if feature_mode in ["featured", "both"] else None
+                            end_base = max(filter(None, [start_date, highlighted_until, featured_until]))
+                            end_date = end_base + timedelta(days=2)
+                        else:
+                            start_date = now - timedelta(days=5)
+                            highlighted_until = start_date + timedelta(days=2) if feature_mode in ["highlighted", "both"] else None
+                            featured_base = highlighted_until or start_date
+                            featured_until = featured_base + timedelta(days=1) if feature_mode in ["featured", "both"] else None
+                            end_base = max(filter(None, [start_date, highlighted_until, featured_until]))
+                            end_date = end_base + timedelta(days=30)
+
+                        currency = merchant.preferred_currency or random.choice(CURRENCIES)
+                        slug_suffix = uuid.uuid4().hex[:6]
+                        slug = (
+                            f"{abbrev['discount'][discount_type]}-"
+                            f"{abbrev['status'][status]}-"
+                            f"{abbrev['redeem'][redemption_type]}-"
+                            f"{abbrev['usage'][usage_type]}-"
+                            f"{abbrev['feature'][feature_mode]}-"
+                            f"{idx}-{slug_suffix}"
+                        )[:64]
+
+                        title = f"{discount_type.replace('_', ' ').title()} ({status})"
+                        description = (
+                            f"{title} for {merchant.name}. Redemption: {redemption_type}. "
+                            f"Usage: {usage_type.replace('_', ' ')}."
+                        )[:250]
+
+                        offer_data: Dict[str, Any] = {
+                            "title": title[:64],
+                            "description": description,
+                            "slug": slug,
+                            "cover_image": random.choice(cover_images),
+                            "discount_type": discount_type,
+                            "discount_value": discount_values[discount_type],
+                            "currency": currency,
+                            "redemption_type": redemption_type,
+                            "coupon_limit": 0 if status == OFFER_STATUS["SOLD_OUT"] else 100,
+                            "status": status,
+                            "start_date": start_date,
+                            "end_date": end_date,
+                            "terms_and_conditions": "Standard terms and conditions apply.",
+                            "featured_until": featured_until,
+                            "highlighted_until": highlighted_until,
+                            "merchant_id": merchant.id,
+                            "category_id": category_id,
+                        }
+                        offer_data.update(usage_fields(usage_type))
+
+                        offers_to_create.append(Offer(**offer_data))
+                        idx += 1
+
+    try:
+        db.session.add_all(offers_to_create)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
