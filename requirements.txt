@@ -100,8 +100,6 @@ slowapi==0.1.9
 SQLAlchemy==2.0.45
 SQLAlchemy-Utils==0.41.2
 starlette==0.52.1
-# Editable Git install with no remote (studentx-fastapi==0.1.0)
--e /home/lando/proj/studentx-fab/fastapi
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.2
