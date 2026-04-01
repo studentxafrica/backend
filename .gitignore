@@ -4,6 +4,7 @@
 ./build/*
 .idea
 venv
+.venv
 wenv
 *.sublime*
 
