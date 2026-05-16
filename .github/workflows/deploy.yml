@@ -3,7 +3,7 @@ name: Deploy Backend to FTP v2
 on:
   push:
     branches:
-      - master
+      - staging
     paths:
       - "/**"
       - ".github/workflows/deploy.yml"
