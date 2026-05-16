@@ -21,7 +21,7 @@ import json
 from . import user
 
 REQUIRED_PROFILE_FIELDS = [
-    ("phone", "Phone number"),
+    # ("phone", "Phone number"),
     ("school", "Institution/School"),
     ("major", "Program/Major"),
     ("graduation_year", "Expected graduation year"),
