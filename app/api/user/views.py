@@ -12,7 +12,6 @@ from app.email import send_email
 
 from . import user
 
-
 @user.route('/sheerid/callback', methods=['POST'])
 def sheerid_callback():
     data = request.get_json()
