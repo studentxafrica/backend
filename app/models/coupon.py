@@ -59,7 +59,8 @@ class Coupon(BaseModel, db.Model):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._generate_qr_code()
+        if not self.qr_code:
+            self._generate_qr_code()
 
     def _generate_qr_code(self):
         """

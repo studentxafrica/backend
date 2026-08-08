@@ -154,6 +154,8 @@ def redeem_coupon(id):
                     'title': coupon.offer.title,
                     'slug': coupon.offer.slug,
                     'coverImage': coupon.offer.cover_image,
+                    'offerKind': coupon.offer.offer_kind,
+                    'eventUrl': coupon.offer.event_url,
                     'discountType': coupon.offer.discount_type,
                     'discountValue': coupon.offer.discount_value,
                     'currency': coupon.offer.currency,
@@ -199,6 +201,12 @@ def upload_coupons():
 
     if offer.merchant_id != merchant.id:
         return jsonify({"message": "Offer does not belong to this merchant"}), 403
+
+    if offer.is_event:
+        return jsonify({
+            "message": "Event offers do not use coupon codes",
+            "description": "Everyone who registers for an event receives the same event link."
+        }), 400
 
     if not _validate_offer_for_upload(offer):
         return jsonify({"message": "Offer is expired"}), 400

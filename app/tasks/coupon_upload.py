@@ -36,6 +36,14 @@ def process_coupon_upload(job_id: str):
         db.session.commit()
         return
 
+    if offer.is_event:
+        job.status = UPLOAD_STATUS["FAILED"]
+        _append_error(job, {"row": None, "coupon_code": None,
+                            "reason": "Event offers do not use coupon codes"})
+        job.completed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return
+
     job.status = UPLOAD_STATUS["PROCESSING"]
     job.errors = []
     db.session.commit()

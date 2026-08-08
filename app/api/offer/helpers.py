@@ -1,8 +1,39 @@
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from sqlalchemy import func  # type: ignore
 from app import db
 from app.models.offer import Offer, OfferView
 from app.models.coupon import Coupon
+
+
+def is_valid_event_url(url) -> bool:
+    """
+    Check that an event link is a usable http(s) address.
+    """
+    if not isinstance(url, str) or not url.strip():
+        return False
+    parsed = urlparse(url.strip())
+    return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+
+
+def serialize_claim(offer: Offer, coupon: Coupon) -> dict:
+    """
+    Build the payload a student sees after claiming an offer.
+
+    Discount offers hand out the code that was generated for that student.
+    Event offers hand out the event link and its QR code, which are the same
+    for everyone who claims the offer, so no code is exposed.
+    """
+    payload = {
+        'offerKind': offer.offer_kind,
+        'code': None if offer.is_event else coupon.coupon_code,
+        'qrCode': coupon.qr_code,
+        'expiryDate': coupon.expiry_date,
+        'status': coupon.status,
+    }
+    if offer.is_event:
+        payload['eventUrl'] = offer.event_url
+    return payload
 
 
 def track_offer_view(offer_id, user_id=None):
