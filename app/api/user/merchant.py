@@ -357,22 +357,11 @@ def edit_merchant_offer(id):
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    if data.get('event_url'):
-        from app.api.offer.helpers import is_valid_event_url
-        if not offer.is_event:
-            return jsonify({"message": "An event link can only be set on event offers"}), 400
-        if not is_valid_event_url(data['event_url']):
-            return jsonify({
-                "message": "Invalid event link. Provide a link starting with http:// or https://"
-            }), 400
-        event_url = data['event_url'].strip()
-        if event_url != offer.event_url:
-            from app.utils import generate_qr
-            offer.event_url = event_url
-            offer.event_qr_code = generate_qr(event_url)
-            # Registrations already handed out carry this same QR code
-            db.session.query(Coupon).filter(Coupon.offer_id == offer.id).update(
-                {Coupon.qr_code: offer.event_qr_code}, synchronize_session=False)
+    from app.api.offer.helpers import apply_event_url_update
+    event_error = apply_event_url_update(offer, data)
+    if event_error:
+        body, status = event_error
+        return jsonify(body), status
 
     for field in data:
         if field in ALLOWED_UPDATE_FIELDS and (data[field] or field == 'tags'):

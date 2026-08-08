@@ -17,7 +17,12 @@ from app.utils import roles_required
 from app.email import send_email
 from config import config as config_class
 
-from app.models.offer import OFFER_STATUS
+from app.models.offer import OFFER_STATUS, OFFER_KINDS
+from app.api.offer.helpers import (
+    prepare_offer_fields,
+    apply_event_url_update,
+    serialize_offer_for_admin,
+)
 
 from app.models.consumer import VerificationRequestStatus
 
@@ -754,38 +759,13 @@ def get_offer_management_data():
     )
 
     if tab == 'offers':
-        # Offers query
-        query = db.session.query(
-            Offer.id,
-            Offer.title,
-            Merchant.name.label('merchant'),
-            Category.name.label('category'),
-            Offer.discount_type,
-            Offer.discount_value,
-            Offer.coupon_limit,
-            label('claimed', func.count(Coupon.id)),
-            label('redeemed', func.count(
-                case((Coupon.status == 'redeemed', Coupon.id), else_=None)
-            )),
-            Offer.start_date,
-            Offer.end_date,
-            Offer.status,
-            label('revenue', func.coalesce(
-                func.sum(Coupon.redeemed_amount), 0)),
-            Offer.view_count,
-            Offer.cover_image,
-            Offer.description
-        ).join(
+        # Load full offers so merchant, category and coupon counts resolve
+        query = db.session.query(Offer).join(
             Merchant, Offer.merchant_id == Merchant.id
         ).outerjoin(
             Category, Offer.category_id == Category.id
-        ).outerjoin(
-            Coupon, Coupon.offer_id == Offer.id
-        ).group_by(
-            Offer.id, Merchant.name, Category.name
         )
 
-        # Apply filters
         if search_term:
             query = query.filter(
                 or_(
@@ -796,43 +776,14 @@ def get_offer_management_data():
             )
 
         if status_filter != 'all':
-            query = query.filter(
-                Offer.status == status_filter
-            )
+            query = query.filter(Offer.status == status_filter)
 
         offers: List[Offer] = query.order_by(
             Offer.start_date.desc()).limit(100).all()
 
-        offer_data = [{
-            'id': offer.id,
-            'title': offer.title,
-            'merchant': {
-                'name': offer.merchant.name if hasattr(offer.merchant, 'name') else None,
-                'id': offer.merchant_id if hasattr(offer, 'merchant_id') else None,
-                'logo': offer.merchant.logo if hasattr(offer.merchant, 'logo') else None
-            },
-            'category': {
-                'name': offer.category.name if hasattr(offer.category, 'name') else None,
-                'id': offer.category.id if hasattr(offer.category, 'id') else None
-            } if offer.category else None,
-            'discountType': offer.discount_type,
-            'discountValue': offer.discount_value,
-            'couponLimit': offer.coupon_limit,
-            'claimed': len([coupon for coupon in offer.coupons if coupon.status == 'active']) if hasattr(offer, 'coupons') else 0,
-            'redeemed': len([coupon for coupon in offer.coupons if coupon.status == 'redeemed']) if hasattr(offer, 'coupons') else 0,
-            'startDate': offer.start_date.isoformat(),
-            'currency:': offer.currency if hasattr(offer, 'currency') else 'USD',
-            'endDate': offer.end_date.isoformat(),
-            'status': offer.status,
-            'revenue': 0,  # TODO: Calculate revenue from redeemed coupons
-            'views': offer.view_count,
-            'coverImage': offer.cover_image,
-            'description': offer.description
-        } for offer in offers]
-
         return jsonify({
             'stats': stats,
-            'data': offer_data,
+            'data': [serialize_offer_for_admin(offer) for offer in offers],
             'success': True
         })
 
@@ -843,6 +794,8 @@ def get_offer_management_data():
             Coupon.coupon_code,
             Offer.title.label('offer'),
             Offer.id.label('offerId'),
+            Offer.offer_kind.label('offerKind'),
+            Offer.event_url.label('eventUrl'),
             Consumer.first_name,
             Consumer.last_name,
             Consumer.email.label('studentEmail'),
@@ -876,7 +829,10 @@ def get_offer_management_data():
 
         coupon_data = [{
             'id': c.id,
-            'code': c.coupon_code,
+            # Event registrations all share one link, so there is no code
+            'code': None if c.offerKind == OFFER_KINDS["EVENT"] else c.coupon_code,
+            'offerKind': c.offerKind,
+            'eventUrl': c.eventUrl,
             'offer': c.offer,
             'offerId': c.offerId,
             'student': f"{c.first_name} {c.last_name}" if c.first_name else 'Anonymous',
@@ -895,6 +851,164 @@ def get_offer_management_data():
             'data': coupon_data,
             'success': True
         })
+
+
+@admin.route('/offers', methods=['POST'])
+@roles_required('admin')
+def create_offer_for_merchant():
+    """
+    Create an offer on a merchant's behalf.
+
+    Applies exactly the same rules as a merchant creating their own offer,
+    including event offers, and records which admin acted for them.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"message": "No data provided"}), 400
+
+    merchant_id = data.get('merchant_id')
+    if not merchant_id:
+        return jsonify({
+            "message": "Missing required field: merchant_id",
+            "description": "Choose the merchant this offer belongs to"
+        }), 400
+
+    merchant: Merchant | None = db.session.query(
+        Merchant).filter_by(id=merchant_id).first()
+    if not merchant:
+        return jsonify({"message": "Merchant not found"}), 404
+
+    if not merchant.approved:
+        return jsonify({
+            "message": "Merchant is not approved",
+            "description": "Approve the merchant before publishing offers for them"
+        }), 400
+
+    try:
+        fields, error = prepare_offer_fields(data)
+        if error:
+            body, status = error
+            return jsonify(body), status
+
+        category_id = data.get('category_id') or merchant.category_id
+        offer = Offer(
+            **fields,
+            merchant_id=merchant.id,
+            category_id=category_id
+        )
+
+        if data.get('tags'):
+            from app.models.offer import Tag
+            tags = []
+            for tag_name in data['tags']:
+                tag = db.session.query(Tag).filter(
+                    Tag.name == tag_name.lower().strip()).first()
+                if not tag:
+                    tag = Tag(name=tag_name.lower().strip())
+                    tag.save()
+                tags.append(tag)
+            offer.tags = tags
+        else:
+            offer.tags = []
+
+        offer.save()
+
+        current_app.logger.info(
+            f"Admin {g.user.username} created offer {offer.id} for merchant {merchant.id}"
+        )
+
+        return jsonify({
+            "success": True,
+            "message": f'Offer "{offer.title}" created for {merchant.name}',
+            "data": serialize_offer_for_admin(offer)
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error creating offer for merchant: {str(e)}")
+        return jsonify({
+            "message": "Could not create offer",
+            "description": str(e)
+        }), 500
+
+
+@admin.route('/offers/<offer_id>', methods=['PUT'])
+@roles_required('admin')
+def update_offer_for_merchant(offer_id):
+    """
+    Update any merchant's offer on their behalf.
+    """
+    offer: Offer | None = db.session.query(Offer).filter_by(id=offer_id).first()
+    if not offer:
+        return jsonify({
+            'message': 'Offer not found',
+            'description': 'The specified offer does not exist'
+        }), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"message": "No data provided"}), 400
+
+    ALLOWED_UPDATE_FIELDS = [
+        'title', 'description', 'slug', 'cover_image', 'discount_type',
+        'discount_value', 'currency', 'category_id', 'coupon_limit',
+        'status', 'start_date', 'end_date', 'terms_and_conditions',
+        'redemption_type', 'max_claims_per_user', 'cooldown_period_hours'
+    ]
+
+    try:
+        event_error = apply_event_url_update(offer, data)
+        if event_error:
+            body, status = event_error
+            return jsonify(body), status
+
+        if data.get('cover_image') and not data['cover_image'].startswith('http'):
+            import cloudinary.uploader  # type: ignore
+            upload_result = cloudinary.uploader.upload(
+                data['cover_image'], folder='offers/')
+            data['cover_image'] = upload_result['secure_url']
+
+        for field in ALLOWED_UPDATE_FIELDS:
+            if field not in data or data[field] is None:
+                continue
+            # An event grants access, so its discount fields stay fixed
+            if offer.is_event and field in ('discount_type', 'discount_value'):
+                continue
+            if field in ('start_date', 'end_date') and isinstance(data[field], str):
+                setattr(offer, field, datetime.fromisoformat(
+                    data[field].replace('Z', '+00:00')))
+            else:
+                setattr(offer, field, data[field])
+
+        if data.get('tags') is not None:
+            from app.models.offer import Tag
+            tags = []
+            for tag_name in data['tags']:
+                tag = db.session.query(Tag).filter(
+                    Tag.name == tag_name.lower().strip()).first()
+                if not tag:
+                    tag = Tag(name=tag_name.lower().strip())
+                    tag.save()
+                tags.append(tag)
+            offer.tags = tags
+
+        offer.save()
+
+        current_app.logger.info(
+            f"Admin {g.user.username} updated offer {offer.id}"
+        )
+
+        return jsonify({
+            "success": True,
+            "message": f'Offer "{offer.title}" updated successfully',
+            "data": serialize_offer_for_admin(offer)
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating offer: {str(e)}")
+        return jsonify({
+            "message": "Could not update offer",
+            "description": str(e)
+        }), 500
 
 
 @admin.route('/offers/<offer_id>/activate', methods=['POST'])
