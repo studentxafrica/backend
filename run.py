@@ -41,10 +41,6 @@ def shutdown_session(exception=None):
     """
     if exception:
         app.logger.error(f"Exception during request: {exception}")
-    global file_handler
-    if file_handler is not None:
-        file_handler.close()
-        file_handler = None
     db.session.remove()
 
 

@@ -521,6 +521,7 @@ def process_student_verification_request():
 @user.route('/verification/student/submit', methods=['POST'])
 @roles_required('consumer')
 def submit_student_verification_request():
+    import sys
     from app.models import VerificationRequest, VerificationDocument
     import json
     import datetime
@@ -531,11 +532,17 @@ def submit_student_verification_request():
     if not user:
         return jsonify({"error": "User not found"}), 401
 
+    current_app.logger.info(f"[verification/student/submit] user={user.id} content_length={request.content_length}")
+    print(f"[verification/student/submit] user={user.id} content_length={request.content_length}", file=sys.stderr, flush=True)
+
     # Handle multipart/form-data
     personal_info_str = request.form.get('personalInfo')
     academic_info_str = request.form.get('academicInfo')
     documents_meta_str = request.form.get('documentsMeta')
     files = request.files.getlist('documents')
+
+    current_app.logger.info(f"[verification/student/submit] files={[f.filename for f in files]}")
+    print(f"[verification/student/submit] files={[f.filename for f in files]}", file=sys.stderr, flush=True)
 
     if not files or len(files) == 0:
         return jsonify({"error": "No documents provided"}), 400
@@ -579,12 +586,24 @@ def submit_student_verification_request():
         # Get metadata for this file (if available)
         meta = documents_meta[i] if i < len(documents_meta) else {}
 
-        # Upload file to Cloudinary
-        cloudinary_resp = cloudinary.uploader.upload(
-            file,
-            folder='studentx/verification/requests/documents/user-' + str(user.id),
-            resource_type='auto'
-        )
+        current_app.logger.info(f"[verification/student/submit] uploading file {i+1}/{len(files)}: {file.filename}")
+        print(f"[verification/student/submit] uploading file {i+1}/{len(files)}: {file.filename}", file=sys.stderr, flush=True)
+
+        # Upload file to Cloudinary — 90s timeout keeps us safely under gunicorn's 120s limit
+        try:
+            cloudinary_resp = cloudinary.uploader.upload(
+                file,
+                folder='studentx/verification/requests/documents/user-' + str(user.id),
+                resource_type='auto',
+                timeout=90,
+            )
+        except Exception as e:
+            current_app.logger.error(f"[verification/student/submit] Cloudinary upload failed for user {user.id}, file {file.filename}: {e}")
+            print(f"[verification/student/submit] Cloudinary upload FAILED: {e}", file=sys.stderr, flush=True)
+            return jsonify({"error": "Failed to upload document. Please try again."}), 500
+
+        current_app.logger.info(f"[verification/student/submit] file {i+1} uploaded ok")
+        print(f"[verification/student/submit] file {i+1} uploaded ok", file=sys.stderr, flush=True)
 
         document = VerificationDocument(
             request_id=verification_request.id,
@@ -598,17 +617,21 @@ def submit_student_verification_request():
     user.verification_status = VerificationRequestStatus.IN_PROGRESS
     user.save()
 
-    send_email(
-        to=[user.email],
-        subject="Verification Request Submitted",
-        template="email/verification_request",
-        context={
-            'user': user,
-            'verification_request': verification_request,
-            'documents': [doc.document_url for doc in verification_request.documents]
-        }
-    )
+    try:
+        send_email(
+            to=[user.email],
+            subject="Verification Request Submitted",
+            template="email/verification_request",
+            context={
+                'user': user,
+                'verification_request': verification_request,
+                'documents': [doc.document_url for doc in verification_request.documents]
+            }
+        )
+    except Exception as e:
+        current_app.logger.error(f"[verification/student/submit] email failed for user {user.id}: {e}")
 
+    current_app.logger.info(f"[verification/student/submit] success for user {user.id}, request={verification_request.id}")
     return jsonify({
         "message": "Verification request submitted successfully",
         "data": {

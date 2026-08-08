@@ -80,8 +80,8 @@ def create_app(config_name='default'):
     # Logging configuration
     global file_handler
     file_handler = logging.FileHandler(
-        config.get('LOG_FILE', 'app.log'),
-        mode=config.get('LOG_FILE_MODE', 'a')
+        app.config.get('LOG_FILE', 'app.log'),
+        mode=app.config.get('LOG_FILE_MODE', 'a')
     )
 
     logging.basicConfig(
