@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from app.api.offer import offer
 from app.api.offer.helpers import (  # type: ignore
-    track_offer_view, serialize_claim, is_valid_event_url
+    track_offer_view, serialize_claim, is_valid_event_url, prepare_offer_fields
 )
 from app.models.offer import Offer
 from app.models.coupon import Coupon, COUPON_STATUS
@@ -685,12 +685,6 @@ def create_offer():
     """
     try:
         data = request.get_json()
-        required_fields = [
-            'title', 'description', 'slug', 'cover_image', 'discount_type',
-            'discount_value' if data.get('discount_type') in [
-                'percentage', 'fixed'] else None, 'coupon_limit', 'redemption_type',
-            'start_date', 'end_date'
-        ]
         if not data:
             return jsonify({"message": "No data provided"}), 400
 
@@ -699,115 +693,15 @@ def create_offer():
         if not merchant:
             return jsonify({"message": "Merchant not found"}), 401
 
-        offer_kind = data.get('offer_kind') or OFFER_KINDS["DISCOUNT"]
-        if offer_kind not in OFFER_KINDS.values():
-            return jsonify({
-                "message": f"Invalid offer_kind. Must be one of: {list(OFFER_KINDS.values())}"
-            }), 400
-        is_event = offer_kind == OFFER_KINDS["EVENT"]
+        fields, error = prepare_offer_fields(data)
+        if error:
+            body, status = error
+            return jsonify(body), status
 
-        # Validate required fields
-        if is_event:
-            required_fields = [
-                'title', 'description', 'slug', 'cover_image', 'event_url',
-                'coupon_limit', 'start_date', 'end_date'
-            ]
-        else:
-            required_fields = [
-                'title', 'description', 'slug', 'cover_image', 'discount_type',
-                'discount_value' if data.get('discount_type') in [
-                    'percentage', 'fixed'] else None, 'currency', 'coupon_limit', 'redemption_type',
-                'start_date', 'end_date'
-            ]
-        optional_fields = [
-            'category_id', 'featured_until', 'highlighted_until', 'terms_and_conditions', 'tags', 'stores',
-            'usage_type', 'max_claims_per_user', 'cooldown_period_hours', 'tier_progression'
-        ]
-
-        def _missing(field_name: str) -> bool:
-            if field_name not in data:
-                return True
-            value = data.get(field_name)
-            if value is None:
-                return True
-            if isinstance(value, str) and not value.strip():
-                return True
-            return False
-
-        for field in required_fields:
-            if field is not None and _missing(field):
-                return jsonify({"message": f"Missing required field: {field}"}), 400
-        # upload cover image to cloudinary
-        import cloudinary.uploader  # type: ignore
-        if 'cover_image' in data:
-            cover_image = data['cover_image']
-            if not cover_image.startswith('http'):
-                # Assuming cover_image is a file path or base64 string
-                upload_result = cloudinary.uploader.upload(
-                    cover_image, folder='offers/')
-                data['cover_image'] = upload_result['secure_url']
-        else:
-            return jsonify({"message": "Missing required field: cover_image"}), 400
-        # Validate usage type specific fields
-        from app.models.offer import USAGE_TYPES
-        usage_type = data.get('usage_type', USAGE_TYPES["SINGLE_USE"])
-
-        if usage_type not in USAGE_TYPES.values():
-            return jsonify({"message": f"Invalid usage_type. Must be one of: {list(USAGE_TYPES.values())}"}), 400
-
-        if usage_type == USAGE_TYPES["TIERED"]:
-            return jsonify({"message": "Tiered offers are not supported"}), 400
-
-        # Validate multi-use specific fields
-        if usage_type == USAGE_TYPES["MULTI_USE"]:
-            if not data.get('max_claims_per_user'):
-                return jsonify({"message": "max_claims_per_user is required for multi_use offers"}), 400
-
-        event_url = None
-        event_qr_code = None
-        if is_event:
-            # A student registers for an event once, and the link they receive is
-            # the same one everyone else receives.
-            if usage_type != USAGE_TYPES["SINGLE_USE"]:
-                return jsonify({
-                    "message": "Event offers can only be registered for once per student"
-                }), 400
-            if not is_valid_event_url(data.get('event_url')):
-                return jsonify({
-                    "message": "Invalid event_url. Provide a link starting with http:// or https://"
-                }), 400
-            event_url = data['event_url'].strip()
-            # Generated once here so every registration shares the same QR code
-            from app.utils import generate_qr
-            event_qr_code = generate_qr(event_url)
-            # An event grants access rather than money off a purchase
-            data['discount_type'] = DISCOUNT_TYPES["FREE_ITEM"]
-            data['discount_value'] = 0
-            data['currency'] = data.get('currency') or 'USD'
-
-        # Create the offer instance
         offer = Offer(
-            title=data.get('title'),
-            description=data.get('description'),
-            slug=data.get('slug'),
-            cover_image=data.get('cover_image'),
-            offer_kind=offer_kind,
-            event_url=event_url,
-            event_qr_code=event_qr_code,
-            discount_type=data['discount_type'],
-            discount_value=data.get('discount_value'),
-            currency=data.get('currency'),
-            coupon_limit=data.get('coupon_limit'),
-            start_date=datetime.fromisoformat(data.get('start_date')),
-            end_date=datetime.fromisoformat(data.get('end_date')),
-            terms_and_conditions=data.get('terms_and_conditions', ''),
+            **fields,
             merchant_id=merchant.id,
-            category_id=merchant.category_id,
-            # New flexible usage fields
-            usage_type=usage_type,
-            max_claims_per_user=data.get('max_claims_per_user', 1),
-            cooldown_period_hours=data.get('cooldown_period_hours'),
-            tier_progression=data.get('tier_progression')
+            category_id=merchant.category_id
         )
 
         if data.get('tags'):
