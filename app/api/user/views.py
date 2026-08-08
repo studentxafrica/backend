@@ -171,7 +171,11 @@ def get_current_user_profile():
         } for saved in saved_offers],
         'coupons': [{
             'id': coupon.id,
-            'code': coupon.coupon_code,
+            # Event registrations all share one link, so there is no code to show
+            'code': None if coupon.offer.is_event else coupon.coupon_code,
+            'offerKind': coupon.offer.offer_kind,
+            'eventUrl': coupon.offer.event_url,
+            'qrCode': coupon.qr_code,
             'title': coupon.offer.title,
             'brand': coupon.offer.merchant.name,
             'brandLogo': coupon.offer.merchant.logo,

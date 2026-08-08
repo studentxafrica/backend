@@ -6,11 +6,14 @@ from datetime import datetime, timezone, timedelta  # type: ignore
 from sqlalchemy.orm import Session  # type: ignore
 from sqlalchemy.orm.scoping import scoped_session  # type: ignore
 from typing import List  # type: ignore
-from app.models.offer import DISCOUNT_TYPES, USAGE_TYPES
+from app.models.offer import DISCOUNT_TYPES, USAGE_TYPES, OFFER_KINDS
+from uuid import uuid4
 
 
 from app.api.offer import offer
-from app.api.offer.helpers import track_offer_view  # type: ignore
+from app.api.offer.helpers import (  # type: ignore
+    track_offer_view, serialize_claim, is_valid_event_url
+)
 from app.models.offer import Offer
 from app.models.coupon import Coupon, COUPON_STATUS
 from app.models.consumer import Consumer
@@ -79,6 +82,7 @@ def get_offer_by_id(id: str):
             'description': offer.description,
             'slug': offer.slug,
             'coverImage': offer.cover_image,
+            'offerKind': offer.offer_kind,
             'discountType': offer.discount_type,
             'discountValue': offer.discount_value,
             'currency': offer.currency,
@@ -136,23 +140,26 @@ def create_coupon(id):
             session.rollback()
             return jsonify({"message": "Offer not found"}), 404
 
+        cannot_claim = "Cannot register for event" if offer.is_event \
+            else "Cannot claim coupon"
+
         if offer.usage_type == USAGE_TYPES["TIERED"]:
             session.rollback()
             return jsonify({
-                "message": "Cannot claim coupon",
+                "message": cannot_claim,
                 "description": "Tiered offers are not supported"
             }), 400
 
         if offer.status == 'sold_out':
             session.rollback()
             return jsonify({
-                "message": "Cannot claim coupon",
-                "description": "Coupons sold out"
+                "message": cannot_claim,
+                "description": "Event is fully booked" if offer.is_event else "Coupons sold out"
             }), 400
         if offer.status != 'active':
             session.rollback()
             return jsonify({
-                "message": "Cannot claim coupon",
+                "message": cannot_claim,
                 "description": "Offer is not active"
             }), 400
 
@@ -162,8 +169,15 @@ def create_coupon(id):
         if offer_end <= now:
             session.rollback()
             return jsonify({
-                "message": "Cannot claim coupon",
+                "message": cannot_claim,
                 "description": "Offer has expired"
+            }), 400
+
+        if offer.is_event and not offer.ensure_event_qr_code():
+            session.rollback()
+            return jsonify({
+                "message": cannot_claim,
+                "description": "This event has no event link yet. Please try again later."
             }), 400
 
         existing_coupon = session.query(Coupon).filter(
@@ -182,14 +196,12 @@ def create_coupon(id):
             else:
                 session.rollback()
                 return jsonify({
-                    "message": "Coupon already claimed",
-                    "description": "You already have an active coupon for this offer",
-                    "data": {
-                        'code': existing_coupon.coupon_code,
-                        "qrCode": existing_coupon.qr_code,
-                        'expiryDate': existing_coupon.expiry_date,
-                        'status': existing_coupon.status
-                    }
+                    "message": "Already registered" if offer.is_event
+                    else "Coupon already claimed",
+                    "description": "You are already registered for this event"
+                    if offer.is_event
+                    else "You already have an active coupon for this offer",
+                    "data": serialize_claim(offer, existing_coupon)
                 }), 200
 
         from app.models.user_offer_usage import UserOfferUsage
@@ -216,8 +228,8 @@ def create_coupon(id):
             if coupon_limit <= 0:
                 session.rollback()
                 return jsonify({
-                    "message": "Cannot claim coupon",
-                    "description": "Coupons sold out"
+                    "message": cannot_claim,
+                    "description": "Event is fully booked" if offer.is_event else "Coupons sold out"
                 }), 400
             claimed_redeemed_count = session.query(func.count(Coupon.id)).filter(
                 Coupon.offer_id == offer.id,
@@ -236,20 +248,32 @@ def create_coupon(id):
         if not can_claim:
             session.rollback()
             return jsonify({
-                "message": "Cannot claim coupon",
+                "message": cannot_claim,
                 "description": reason
             }), 400
 
         usage.record_claim(commit=False)
 
-        coupon_code = generate_coupon_code(offer.id, user.id)
-        coupon = Coupon(
-            coupon_code=coupon_code,
-            offer_id=offer.id,
-            consumer_id=user.id,
-            expiry_date=offer.end_date,
-            status=COUPON_STATUS["ACTIVE"]
-        )
+        if offer.is_event:
+            # Everyone who claims an event offer is handed the same link and the
+            # same QR code, so nothing is generated per student. The stored code
+            # is an internal registration reference and is never shown to them.
+            coupon = Coupon(
+                coupon_code=str(uuid4()),
+                offer_id=offer.id,
+                consumer_id=user.id,
+                expiry_date=offer.end_date,
+                status=COUPON_STATUS["ACTIVE"],
+                qr_code=offer.event_qr_code
+            )
+        else:
+            coupon = Coupon(
+                coupon_code=generate_coupon_code(offer.id, user.id),
+                offer_id=offer.id,
+                consumer_id=user.id,
+                expiry_date=offer.end_date,
+                status=COUPON_STATUS["ACTIVE"]
+            )
         session.add(coupon)
 
         discount_info = calculate_tiered_discount(
@@ -258,13 +282,13 @@ def create_coupon(id):
         session.commit()
 
         return jsonify({
-            "message": "Coupon created successfully",
-            "description": f"You can now use this coupon code to redeem the offer. This is your {usage.usage_count} claim for this offer.",
+            "message": "Registration confirmed" if offer.is_event
+            else "Coupon created successfully",
+            "description": "You are registered. Use the event link to join."
+            if offer.is_event
+            else f"You can now use this coupon code to redeem the offer. This is your {usage.usage_count} claim for this offer.",
             "data": {
-                'code': coupon.coupon_code,
-                "qrCode": coupon.qr_code,
-                'expiryDate': coupon.expiry_date,
-                'status': coupon.status,
+                **serialize_claim(offer, coupon),
                 'discount': discount_info,
                 'usage_stats': {
                     'total_claims': usage.usage_count,
@@ -282,15 +306,14 @@ def create_coupon(id):
             Coupon.status == COUPON_STATUS["ACTIVE"]
         ).first()
         if existing_coupon:
+            existing_offer = existing_coupon.offer
             return jsonify({
-                "message": "Coupon already claimed",
-                "description": "You already have an active coupon for this offer",
-                "data": {
-                    'code': existing_coupon.coupon_code,
-                    "qrCode": existing_coupon.qr_code,
-                    'expiryDate': existing_coupon.expiry_date,
-                    'status': existing_coupon.status
-                }
+                "message": "Already registered" if existing_offer.is_event
+                else "Coupon already claimed",
+                "description": "You are already registered for this event"
+                if existing_offer.is_event
+                else "You already have an active coupon for this offer",
+                "data": serialize_claim(existing_offer, existing_coupon)
             }), 409
         return jsonify({
             "message": "Cannot claim coupon",
@@ -366,6 +389,7 @@ def get_featured_offers():
                 'description': offer.description,
                 'slug': offer.slug,
                 'coverImage': offer.cover_image,
+                'offerKind': offer.offer_kind,
                 'discountType': offer.discount_type,
                 'discountValue': offer.discount_value,
                 'currency': offer.currency,
@@ -429,6 +453,7 @@ def get_latest_offers():
                 'description': offer.description,
                 'slug': offer.slug,
                 'coverImage': offer.cover_image,
+                'offerKind': offer.offer_kind,
                 'discountType': offer.discount_type,
                 'discountValue': offer.discount_value,
                 'currency': offer.currency,
@@ -563,6 +588,7 @@ def get_recommended_offers():
                 'description': offer.description,
                 'slug': offer.slug,
                 'coverImage': offer.cover_image,
+                'offerKind': offer.offer_kind,
                 'discountType': offer.discount_type,
                 'discountValue': offer.discount_value,
                 'currency': offer.currency,
@@ -624,6 +650,7 @@ def get_similar_offers(id):
                 'description': similar_offer.description,
                 'slug': similar_offer.slug,
                 'coverImage': similar_offer.cover_image,
+                'offerKind': similar_offer.offer_kind,
                 'discountType': similar_offer.discount_type,
                 'discountValue': similar_offer.discount_value,
                 'currency': similar_offer.currency,
@@ -672,13 +699,26 @@ def create_offer():
         if not merchant:
             return jsonify({"message": "Merchant not found"}), 401
 
+        offer_kind = data.get('offer_kind') or OFFER_KINDS["DISCOUNT"]
+        if offer_kind not in OFFER_KINDS.values():
+            return jsonify({
+                "message": f"Invalid offer_kind. Must be one of: {list(OFFER_KINDS.values())}"
+            }), 400
+        is_event = offer_kind == OFFER_KINDS["EVENT"]
+
         # Validate required fields
-        required_fields = [
-            'title', 'description', 'slug', 'cover_image', 'discount_type',
-            'discount_value' if data.get('discount_type') in [
-                'percentage', 'fixed'] else None, 'currency', 'coupon_limit', 'redemption_type',
-            'start_date', 'end_date'
-        ]
+        if is_event:
+            required_fields = [
+                'title', 'description', 'slug', 'cover_image', 'event_url',
+                'coupon_limit', 'start_date', 'end_date'
+            ]
+        else:
+            required_fields = [
+                'title', 'description', 'slug', 'cover_image', 'discount_type',
+                'discount_value' if data.get('discount_type') in [
+                    'percentage', 'fixed'] else None, 'currency', 'coupon_limit', 'redemption_type',
+                'start_date', 'end_date'
+            ]
         optional_fields = [
             'category_id', 'featured_until', 'highlighted_until', 'terms_and_conditions', 'tags', 'stores',
             'usage_type', 'max_claims_per_user', 'cooldown_period_hours', 'tier_progression'
@@ -723,12 +763,37 @@ def create_offer():
             if not data.get('max_claims_per_user'):
                 return jsonify({"message": "max_claims_per_user is required for multi_use offers"}), 400
 
+        event_url = None
+        event_qr_code = None
+        if is_event:
+            # A student registers for an event once, and the link they receive is
+            # the same one everyone else receives.
+            if usage_type != USAGE_TYPES["SINGLE_USE"]:
+                return jsonify({
+                    "message": "Event offers can only be registered for once per student"
+                }), 400
+            if not is_valid_event_url(data.get('event_url')):
+                return jsonify({
+                    "message": "Invalid event_url. Provide a link starting with http:// or https://"
+                }), 400
+            event_url = data['event_url'].strip()
+            # Generated once here so every registration shares the same QR code
+            from app.utils import generate_qr
+            event_qr_code = generate_qr(event_url)
+            # An event grants access rather than money off a purchase
+            data['discount_type'] = DISCOUNT_TYPES["FREE_ITEM"]
+            data['discount_value'] = 0
+            data['currency'] = data.get('currency') or 'USD'
+
         # Create the offer instance
         offer = Offer(
             title=data.get('title'),
             description=data.get('description'),
             slug=data.get('slug'),
             cover_image=data.get('cover_image'),
+            offer_kind=offer_kind,
+            event_url=event_url,
+            event_qr_code=event_qr_code,
             discount_type=data['discount_type'],
             discount_value=data.get('discount_value'),
             currency=data.get('currency'),
@@ -772,6 +837,8 @@ def create_offer():
                 'description': offer.description,
                 'slug': offer.slug,
                 'coverImage': offer.cover_image,
+                'offerKind': offer.offer_kind,
+                'eventUrl': offer.event_url,
                 'discountType': offer.discount_type,
                 'discountValue': offer.discount_value,
                 'currency': offer.currency,
@@ -847,6 +914,7 @@ def save_offer(id):
                 'description': offer.description,
                 'slug': offer.slug,
                 'coverImage': offer.cover_image,
+                'offerKind': offer.offer_kind,
                 'discountType': offer.discount_type,
                 'discountValue': offer.discount_value,
                 'currency': offer.currency,
@@ -1118,11 +1186,21 @@ def check_available_claims(id):
         elif offer.usage_type == 'unlimited':
             remaining_claims = "unlimited"
 
+        # What the user already holds, so a claimed offer can show its code or
+        # event link again instead of a dead end
+        active_coupon = db.session.query(Coupon).filter(
+            Coupon.offer_id == offer.id,
+            Coupon.consumer_id == user.id,
+            Coupon.status == COUPON_STATUS["ACTIVE"],
+            Coupon.expiry_date > datetime.now(timezone.utc)
+        ).order_by(Coupon.created_at.desc()).first()
+
         return jsonify({
             "message": "Successfully checked claim availability",
             "data": {
                 "can_claim_now": can_claim,
                 "reason": reason if not can_claim else None,
+                "existing_claim": serialize_claim(offer, active_coupon) if active_coupon else None,
                 "remaining_claims": remaining_claims,
                 "current_usage_count": usage_count,
                 "next_available_claim": usage.next_available_claim.isoformat() if usage and usage.next_available_claim else None,

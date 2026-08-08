@@ -81,8 +81,10 @@ def evaluate_claim_rules(
     ]:
         return False, "Unknown usage type"
 
+    sold_out_message = "Event is fully booked" if offer.is_event else "Coupons sold out"
+
     if offer.status == 'sold_out':
-        return False, "Coupons sold out"
+        return False, sold_out_message
     if offer.status != 'active':
         return False, "Offer is not active"
 
@@ -91,24 +93,26 @@ def evaluate_claim_rules(
         return False, "Offer has expired"
 
     if has_active_coupon:
-        return False, "You already have an active coupon for this offer"
+        return False, ("You are already registered for this event" if offer.is_event
+                       else "You already have an active coupon for this offer")
 
     # Check coupon availability for non-unlimited offers
     if offer.usage_type != USAGE_TYPES["UNLIMITED"]:
         coupon_limit = offer.coupon_limit or 0
         if coupon_limit <= 0:
-            return False, "Coupons sold out"
+            return False, sold_out_message
         if claimed_redeemed_count is None:
             return False, "Coupon availability unavailable"
         if claimed_redeemed_count >= coupon_limit:
-            return False, "Coupons sold out"
+            return False, sold_out_message
 
     usage_count = usage.usage_count if usage else 0
     last_claimed_at = usage.last_claimed_at if usage else None
 
     if offer.usage_type == USAGE_TYPES["SINGLE_USE"]:
         if usage_count > 0:
-            return False, "You have already claimed a coupon for this offer"
+            return False, ("You have already registered for this event" if offer.is_event
+                           else "You have already claimed a coupon for this offer")
         return True, ""
 
     if offer.usage_type == USAGE_TYPES["MULTI_USE"]:

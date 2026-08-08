@@ -31,6 +31,12 @@ USAGE_TYPES: Dict[str, str] = {
     "TIERED": "tiered"
 }
 
+# What a claim entitles the student to: a discount code, or access to an event.
+OFFER_KINDS: Dict[str, str] = {
+    "DISCOUNT": "discount",
+    "EVENT": "event"
+}
+
 offer_tags = Table(
     'offer_tags', db.metadata,
     Column('offer_id', String(64), ForeignKey('offers.id'), primary_key=True),
@@ -75,6 +81,14 @@ class Offer(BaseModel, db.Model):
     description: Mapped[str] = mapped_column(String(256), nullable=False)
     slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     cover_image: Mapped[str] = mapped_column(String(256), nullable=False)
+    offer_kind: Mapped[str] = mapped_column(
+        Enum(*OFFER_KINDS.values()), nullable=False,
+        server_default=OFFER_KINDS["DISCOUNT"], default=OFFER_KINDS["DISCOUNT"])
+    # Where the event happens (meeting link, ticket page, ...). Event offers only.
+    event_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # QR of event_url, generated once and shared by every claim on the offer.
+    event_qr_code: Mapped[str | None] = mapped_column(
+        String(256), nullable=True)
     discount_type: Mapped[str] = mapped_column(
         Enum(*DISCOUNT_TYPES.values()), nullable=False)
     discount_value: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -178,6 +192,23 @@ class Offer(BaseModel, db.Model):
     #     if value not in OFFER_STATUS.values():
     #         raise ValueError(f"Invalid status: {value}")
     #     self._status = value
+
+    @property
+    def is_event(self):
+        """
+        Whether claiming this offer grants access to an event instead of a discount code.
+        """
+        return self.offer_kind == OFFER_KINDS["EVENT"]
+
+    def ensure_event_qr_code(self):
+        """
+        Generate the shared QR code for the event link if it is missing.
+        Every claim on the offer hands out this same QR code.
+        """
+        if self.is_event and self.event_url and not self.event_qr_code:
+            from app.utils import generate_qr
+            self.event_qr_code = generate_qr(self.event_url)
+        return self.event_qr_code
 
     @property
     def featured(self):
