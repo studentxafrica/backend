@@ -113,6 +113,7 @@ def send_student_business_outcome_email(application: StudentBusinessApplication,
 
 
 @admin.route('/merchants/register', methods=['POST'])
+@roles_required('admin')
 def register_merchant():
     data = request.get_json() or {}
     email = data.get('email')

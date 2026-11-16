@@ -12,7 +12,8 @@ from uuid import uuid4
 
 from app.api.offer import offer
 from app.api.offer.helpers import (  # type: ignore
-    track_offer_view, serialize_claim, is_valid_event_url, prepare_offer_fields
+    track_offer_view, serialize_claim, is_valid_event_url, prepare_offer_fields,
+    from_approved_merchant,
 )
 from app.models.offer import Offer
 from app.models.coupon import Coupon, COUPON_STATUS
@@ -69,7 +70,7 @@ def get_offer_by_id(id: str):
     if not user:
         return jsonify({"message": "Couldn't verify current user identity"}), 401
     offer: Offer | None = db.session.query(Offer).filter(
-        Offer.id == id).first()  # type: ignore[arg-type]
+        Offer.id == id, from_approved_merchant()).first()  # type: ignore[arg-type]
     if not offer:
         return jsonify({"message": "Offer not found"}), 404
 
@@ -135,7 +136,7 @@ def create_coupon(id):
     try:
 
         offer: Offer | None = session.query(Offer).filter(
-            Offer.id == id).with_for_update().first()
+            Offer.id == id, from_approved_merchant()).with_for_update().first()
         if not offer:
             session.rollback()
             return jsonify({"message": "Offer not found"}), 404
@@ -378,7 +379,8 @@ def get_featured_offers():
         # Fetch featured non-expired offers from the database
         featured_offers: List[Offer] = db.session.query(Offer).filter(
             # Offer.featured_until > datetime.now(timezone.utc),
-            Offer.end_date > current_datetime
+            Offer.end_date > current_datetime,
+            from_approved_merchant(),
         ).order_by(
             Offer.featured_until.desc()
         ).limit(8).all()
@@ -421,7 +423,8 @@ def get_highlighted_offers():
         # Fetch highlighted offers from the database
         highlighted_offers = db.session.query(Offer).filter(
             Offer.highlighted_until > datetime.now(timezone.utc),
-            Offer.end_date > datetime.now(timezone.utc)
+            Offer.end_date > datetime.now(timezone.utc),
+            from_approved_merchant(),
         ).all()
         return jsonify({
             "message": "Successfully fetched all highlighted offers",
@@ -441,6 +444,7 @@ def get_latest_offers():
         current_datetime = datetime.now(timezone.utc)
         latest_offers: List[Offer] = db.session.query(Offer).filter(
             Offer.end_date > current_datetime,
+            from_approved_merchant(),
             # Offer.start_date >= current_datetime - timedelta(weeks=1),
         ).order_by(
             Offer.start_date
@@ -497,6 +501,7 @@ def get_recommended_offers():
         query = session.query(Offer).filter(
             Offer.end_date > datetime.now(timezone.utc),
             Offer.status == 'active',
+            from_approved_merchant(),
         )
 
         # Apply filters
@@ -631,7 +636,8 @@ def get_similar_offers(id):
     """
     try:
         # Fetch the offer by ID
-        offer = db.session.query(Offer).filter(Offer.id == id).first()
+        offer = db.session.query(Offer).filter(
+            Offer.id == id, from_approved_merchant()).first()
         if not offer:
             return jsonify({"message": "Offer not found"}), 404
 
@@ -639,7 +645,8 @@ def get_similar_offers(id):
         similar_offers: List[Offer] = db.session.query(Offer).filter(
             Offer.category_id == offer.category_id,
             Offer.id != id,
-            Offer.end_date > datetime.now(timezone.utc)
+            Offer.end_date > datetime.now(timezone.utc),
+            from_approved_merchant(),
         ).limit(10).all()
 
         return jsonify({
@@ -774,7 +781,7 @@ def save_offer(id):
     try:
         # Fetch offer by ID from the database
         offer: Offer | None = db.session.query(
-            Offer).filter(Offer.id == id).first()
+            Offer).filter(Offer.id == id, from_approved_merchant()).first()
         if not offer:
             return jsonify({"message": "Offer not found"}), 404
 
@@ -846,7 +853,7 @@ def list_offers():
         featured = request.args.get('featured', 'false').lower() == 'true'
 
         # Start with a base query
-        query = Offer.query
+        query = Offer.query.filter(from_approved_merchant())
 
         # Add filters
         if category:
@@ -944,7 +951,7 @@ def get_offer_usage_stats(id):
 
         # Check if offer exists
         offer: Offer | None = db.session.query(
-            Offer).filter(Offer.id == id).first()
+            Offer).filter(Offer.id == id, from_approved_merchant()).first()
         if not offer:
             return jsonify({"message": "Offer not found"}), 404
 
@@ -1053,7 +1060,7 @@ def check_available_claims(id):
 
         # Check if offer exists
         offer: Offer | None = db.session.query(
-            Offer).filter(Offer.id == id).first()
+            Offer).filter(Offer.id == id, from_approved_merchant()).first()
         if not offer:
             return jsonify({"message": "Offer not found"}), 404
 

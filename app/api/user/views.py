@@ -168,7 +168,7 @@ def get_current_user_profile():
             'savedDate': saved.created_at.isoformat(),
             'rating': 4.8,
             'verified': True
-        } for saved in saved_offers],
+        } for saved in saved_offers if saved.offer.merchant.approved],
         'coupons': [{
             'id': coupon.id,
             # Event registrations all share one link, so there is no code to show
@@ -725,7 +725,7 @@ def get_saved_offers():
         'savedDate': saved.created_at.isoformat(),
         'rating': 4.8,
         'verified': True
-    } for saved in saved_offers]
+    } for saved in saved_offers if saved.offer.merchant.approved]
     return jsonify({
         "message": "Saved offers retrieved successfully",
         "data": saved_offers_data
