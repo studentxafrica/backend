@@ -31,17 +31,50 @@ tasks (such as coupon CSV uploads) are queued but never processed.
 
 ### Backend deploys
 
-There is no automated backend deploy. The old FTP workflow uploaded to the
-frontend web host (`ftp.studentx.co.ke` is `46.62.173.211`), not to the
-backend server, and that server runs no FTP service. It has been replaced by
-`.github/workflows/tests.yml`, which only runs the test suite on `staging`.
+`.github/workflows/deploy.yml` runs the tests on every pull request to
+`staging`. On every push to `staging` it runs the tests and, if they pass,
+logs in to the backend server as `studentx` over SSH and runs
+`deploy/remote-deploy.sh` for that commit. The script:
 
-To deploy by hand, as the `studentx` user on the backend server:
+1. stops if the server checkout has uncommitted changes, or commits that are
+   not in the commit being deployed;
+2. fast-forwards `/home/studentx/backend` and installs `requirements.txt` if it
+   changed;
+3. checks the new code starts (settings and imports) before touching the
+   running service, and stops without changing anything if it does not;
+4. reloads gunicorn gracefully (`kill -HUP` on the master process, which
+   `studentx` owns, so no sudo is needed) and waits until `/healthz` reports
+   the new commit;
+5. rolls back to the previous commit if it never does.
 
-1. Update `/home/studentx/backend` to the `staging` commit being released.
-2. Install dependencies into `.venv` if `requirements.txt` changed.
-3. Restart the service: `sudo systemctl restart studentx-backend`.
-4. Check `https://api.studentx.co.ke/healthz` reports that commit.
+Database migrations are not run (`migrations/versions/` is not in git).
+
+(The old FTP workflow uploaded to the frontend web host, since
+`ftp.studentx.co.ke` is `46.62.173.211`, not to the backend server, which runs
+no FTP service.)
+
+#### One-time setup
+
+1. Create a key pair for deploys only. Add the public key to
+   `/home/studentx/.ssh/authorized_keys` on the backend server.
+2. In GitHub (Settings → Secrets and variables → Actions), add:
+   - secret `DEPLOY_SSH_KEY`: the private key;
+   - secret `DEPLOY_KNOWN_HOSTS`: the output of
+     `ssh-keyscan -t ed25519 161.97.72.130`. Its fingerprint must be
+     `SHA256:pnbP5USeFyJBudvxuiKJAYk5Ftn4bL0yGR7AxGR0oB0`; check with
+     `ssh-keygen -lf <file>`;
+   - variable `DEPLOY_HOST`: `161.97.72.130`;
+   - variable `DEPLOY_USER`: `studentx`.
+3. The workflow runs in a GitHub environment named `production`. Add required
+   reviewers to it if deploys should wait for approval.
+
+#### Deploying by hand
+
+Run the same script from your machine:
+
+```sh
+ssh studentx@161.97.72.130 "bash -s -- $(git rev-parse origin/staging)" < deploy/remote-deploy.sh
+```
 
 ### Backend `master`
 
@@ -65,13 +98,27 @@ copied rather than checked out, write the commit to `REVISION` when deploying.
 
 ### Rollback point
 
-Before the first deploy of this change, record what production is running,
-because the version running now cannot report its commit:
+Recorded on 2026-11-16, before the first automated deploy: production was a
+git checkout of `staging` at `c5d9e91`, plus an uncommitted change to
+`app/models/offer.py` (longer offer titles and descriptions).
 
-1. Copy `/home/studentx/backend` (excluding `.venv`), or snapshot the server.
-2. Note the date of that copy and the newest `staging` commit whose code it
-   matches. Production already serves `/healthz`, which was added to `staging`
-   on 2026-06-01, so it was last updated by hand from `staging`.
+`c5d9e91` and the two commits under it (`f09956b`, `f31903f fix: Cloudinary
+upload issue`) existed only on the server, not on GitHub. The release branch
+is built on `c5d9e91` and includes the `offer.py` change, so merging it into
+`staging` puts all of that on GitHub.
+
+To go back, run the deploy script with the earlier commit on a branch that
+contains it, or on the server run `git reset --hard <commit>` and then
+`kill -HUP $(systemctl show -p MainPID --value studentx-backend)`.
+
+### First deploy of this release
+
+1. Run `docs/merchant-audit.sql` and approve legitimate merchants.
+2. Add `SECRET_KEY`, `JWT_SECRET_KEY` and `SECURITY_PASSWORD_SALT` to the
+   server's `.env` (see below). The deploy refuses to go ahead without them.
+3. On the server, discard the uncommitted `app/models/offer.py` change
+   (`git checkout -- app/models/offer.py`); the release contains it.
+4. Merge into `staging`. The workflow deploys it.
 
 ## Signing secrets
 

@@ -1,0 +1,83 @@
+name: Backend tests and deploy
+
+# Pull requests to staging run the tests. Pushes to staging run the tests and,
+# if they pass, deploy that commit to the production server over SSH.
+#
+# Repository settings (GitHub → Settings → Secrets and variables → Actions):
+#   Secret   DEPLOY_SSH_KEY       private key allowed to log in as DEPLOY_USER
+#   Secret   DEPLOY_KNOWN_HOSTS   the server's host key line (ssh-keyscan output)
+#   Variable DEPLOY_HOST          server address
+#   Variable DEPLOY_USER          app user on the server
+on:
+  push:
+    branches:
+      - staging
+  pull_request:
+    branches:
+      - staging
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run test suite
+        run: python -m pytest -q
+
+  deploy:
+    name: Deploy to production
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy this commit
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $GITHUB_SHA" < deploy/remote-deploy.sh
+
+      - name: Check the public endpoint
+        run: |
+          body=$(curl -fsS --max-time 10 https://api.studentx.co.ke/healthz)
+          echo "$body"
+          echo "$body" | grep -q "\"$GITHUB_SHA\""
+
+      - name: Remove the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
