@@ -55,27 +55,53 @@ def read_revision() -> str:
     Taken from a REVISION file next to run.py if one exists, otherwise from
     the git checkout the code runs in. It is read once at startup, so it
     reflects the code actually loaded rather than files changed afterwards.
-    """
-    import subprocess
 
+    The checkout is read from the .git directory itself rather than by running
+    git, because the production service runs with a PATH that does not
+    include it.
+    """
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    revision = _read_text(os.path.join(root, "REVISION"))
+    if revision:
+        return revision
+    return _git_head(root) or "unknown"
+
+
+def _read_text(path: str) -> str:
     try:
-        with open(os.path.join(root, "REVISION")) as revision_file:
-            revision = revision_file.read().strip()
-            if revision:
-                return revision
+        with open(path) as text_file:
+            return text_file.read().strip()
     except OSError:
-        pass
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=root,
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return "unknown"
+        return ""
+
+
+def _git_head(root: str) -> str:
+    """Commit checked out in root, read from .git without running git."""
+    git_dir = os.path.join(root, ".git")
+    if os.path.isfile(git_dir):
+        # A worktree: .git is a file pointing at the real git directory.
+        pointer = _read_text(git_dir)
+        if not pointer.startswith("gitdir:"):
+            return ""
+        git_dir = os.path.join(root, pointer.split(":", 1)[1].strip())
+    common_dir = git_dir
+    common_pointer = _read_text(os.path.join(git_dir, "commondir"))
+    if common_pointer:
+        common_dir = os.path.join(git_dir, common_pointer)
+
+    head = _read_text(os.path.join(git_dir, "HEAD"))
+    if not head.startswith("ref:"):
+        return head
+    ref = head.split(":", 1)[1].strip()
+    for directory in (git_dir, common_dir):
+        commit = _read_text(os.path.join(directory, ref))
+        if commit:
+            return commit
+    for line in _read_text(os.path.join(common_dir, "packed-refs")).splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == ref:
+            return parts[0]
+    return ""
 
 
 def trust_proxy_headers(app) -> None:

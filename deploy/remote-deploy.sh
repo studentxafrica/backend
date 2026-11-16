@@ -60,14 +60,23 @@ reload_gunicorn() {
   kill -HUP "$pid"
 }
 
+# What /healthz reports: the commit, "none" if the running code predates the
+# revision field, or "unreachable" if it does not answer.
+reported_revision() {
+  curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null \
+    | .venv/bin/python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("revision") or "none") if d.get("status")=="ok" else print("unhealthy")' 2>/dev/null \
+    || echo unreachable
+}
+
 # Wait until several consecutive health checks report the expected commit,
-# so old workers still finishing requests have exited.
+# so old workers still finishing requests have exited. With "or-none",
+# code that predates the revision field also counts, as long as it is healthy.
+LAST_REPORTED=""
 wait_for_revision() {
-  local want="$1" streak=0
+  local want="$1" accept_none="${2:-}" streak=0
   for _ in $(seq 1 45); do
-    running="$(curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null \
-      | .venv/bin/python -c 'import json,sys; print(json.load(sys.stdin).get("revision",""))' 2>/dev/null || true)"
-    if [ "$running" = "$want" ]; then
+    LAST_REPORTED="$(reported_revision)"
+    if [ "$LAST_REPORTED" = "$want" ] || { [ -n "$accept_none" ] && [ "$LAST_REPORTED" = "none" ]; }; then
       streak=$((streak + 1))
       [ "$streak" -ge 5 ] && return 0
     else
@@ -78,20 +87,26 @@ wait_for_revision() {
   return 1
 }
 
+# The app reports this file's commit on /healthz. Written by the deploy so it
+# does not depend on git being on the service's PATH.
+record_revision() { echo "$1" > REVISION; }
+
 rollback() {
   log "Rolling back to $PREVIOUS"
   git reset --quiet --hard "$PREVIOUS"
+  record_revision "$PREVIOUS"
   install_requirements "$TARGET" "$PREVIOUS"
   reload_gunicorn
-  if wait_for_revision "$PREVIOUS"; then
-    log "Rolled back; production is running $PREVIOUS"
+  if wait_for_revision "$PREVIOUS" or-none; then
+    log "Rolled back; production is healthy on $PREVIOUS"
   else
-    echo "::error::Rollback did not confirm $PREVIOUS is running. Check: systemctl status $SERVICE"
+    echo "::error::Rollback could not confirm production is healthy (last /healthz: $LAST_REPORTED). Check: systemctl status $SERVICE"
   fi
 }
 
 # 2. Update the code.
 git merge --quiet --ff-only "$TARGET"
+record_revision "$TARGET"
 install_requirements "$PREVIOUS" "$TARGET"
 
 # 3. Check the new code starts (settings, imports) before touching the
@@ -99,6 +114,7 @@ install_requirements "$PREVIOUS" "$TARGET"
 if ! FLASK_ENV=production .venv/bin/python -c 'import wsgi' </dev/null >/tmp/studentx-deploy-check.log 2>&1; then
   tail -20 /tmp/studentx-deploy-check.log
   git reset --quiet --hard "$PREVIOUS"
+  record_revision "$PREVIOUS"
   install_requirements "$TARGET" "$PREVIOUS"
   fail "The new code failed to start (output above). Production was not changed."
 fi
@@ -108,6 +124,7 @@ reload_gunicorn
 if wait_for_revision "$TARGET"; then
   log "Production is running $TARGET"
 else
+  reported="$LAST_REPORTED"
   rollback
-  fail "Production did not report $TARGET after the reload, so it was rolled back."
+  fail "Production reported '$reported' instead of $TARGET after the reload, so it was rolled back."
 fi
