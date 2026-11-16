@@ -78,6 +78,20 @@ def read_revision() -> str:
     return "unknown"
 
 
+def trust_proxy_headers(app) -> None:
+    """
+    Take the client address and scheme from the reverse proxy's forwarding
+    headers, so request.remote_addr (which the rate limiter keys on) is the
+    visitor rather than the proxy. Only the last TRUSTED_PROXIES hops are
+    trusted, so a client cannot spoof its address by sending the header itself.
+    """
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    proxies = int(app.config.get("TRUSTED_PROXIES") or 0)
+    if proxies > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=proxies, x_proto=proxies)
+
+
 def create_app(config_name='default'):
     """
     Create and configure the Flask application.
@@ -93,6 +107,7 @@ def create_app(config_name='default'):
     from config import config
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
+    trust_proxy_headers(app)
 
     from app.security import check_signing_secrets, is_access_token_revoked
     check_signing_secrets(app.config)

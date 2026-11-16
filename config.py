@@ -33,6 +33,11 @@ class Config:
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
     SECURITY_PASSWORD_SALT = os.environ.get("SECURITY_PASSWORD_SALT")
 
+    # Reverse proxies in front of the app. The client address is taken from
+    # X-Forwarded-For only when this is set, so leave it at 0 unless a proxy
+    # you control sits in front of the app.
+    TRUSTED_PROXIES = int(os.environ.get("TRUSTED_PROXIES", "0"))
+
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://studentx.co.ke")
     BACKEND_URL = os.environ.get("BACKEND_URL", "https://api.studentx.co.ke")
 
@@ -141,6 +146,8 @@ class ProductionConfig(Config):
     Inherits from Config and can override specific settings for production.
     """
     DEBUG = False
+    # Production runs behind one nginx proxy.
+    TRUSTED_PROXIES = int(os.environ.get("TRUSTED_PROXIES", "1"))
     SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
         f"mysql+pymysql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}"
     SQLALCHEMY_ECHO = False  # Disable SQL query logging in production
