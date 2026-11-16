@@ -21,3 +21,6 @@ migrations/versions/
 scripts/
 uploads/*
 TODO
+
+# Commit of a deployed copy, written at deploy time
+REVISION

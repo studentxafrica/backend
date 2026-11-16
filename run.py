@@ -10,15 +10,10 @@ dotenv.load_dotenv('.flaskenv')
 
 app = create_app(os.environ.get('FLASK_ENV') or 'default')
 app.logger.info(
-    f"Starting application in {os.environ.get('FLASK_ENV') or 'default'} mode."
+    f"Starting application in {os.environ.get('FLASK_ENV') or 'default'} mode "
+    f"at revision {app.config['REVISION']}."
 )
 
-@app.route("/healthz")
-def health_check():
-    """
-    Health check endpoint to verify that the application is running.
-    """
-    return {"status": "ok"}, 200
 
 @app.context_processor
 def inject_globals():

@@ -48,19 +48,53 @@ limiter = Limiter(
 file_handler: logging.FileHandler | None = None
 
 
+def read_revision() -> str:
+    """
+    Commit the running code was deployed from.
+
+    Taken from a REVISION file next to run.py if one exists, otherwise from
+    the git checkout the code runs in. It is read once at startup, so it
+    reflects the code actually loaded rather than files changed afterwards.
+    """
+    import subprocess
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        with open(os.path.join(root, "REVISION")) as revision_file:
+            revision = revision_file.read().strip()
+            if revision:
+                return revision
+    except OSError:
+        pass
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root,
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "unknown"
+
+
 def create_app(config_name='default'):
     """
     Create and configure the Flask application.
     """
     app = Flask(__name__)
+    app.config["REVISION"] = read_revision()
+
+    @app.get("/healthz")
+    def health_check():
+        """Report that the application is running, and which revision."""
+        return {"status": "ok", "revision": app.config["REVISION"]}, 200
+
     from config import config
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
     from app.security import check_signing_secrets, is_access_token_revoked
-    check_signing_secrets(app.config)
-
-    from app.security import check_signing_secrets
     check_signing_secrets(app.config)
 
     db.init_app(app)
