@@ -3,9 +3,19 @@ from datetime import datetime
 import time
 
 from flask import current_app, render_template
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from mailtrap import Mail, Address, MailtrapClient
 from requests.exceptions import RequestException, SSLError, ConnectionError
+
+from app.security import (
+    EMAIL_CONFIRMATION,
+    PASSWORD_RESET,
+    TOKEN_MAX_AGE_SECONDS,
+    find_account,
+    fingerprint_matches,
+    load_token,
+    password_fingerprint,
+    sign_token,
+)
 
 # Retry configuration
 MAX_RETRIES = 3
@@ -14,16 +24,17 @@ RETRY_DELAY_BASE = 1  # Base delay in seconds (will be multiplied exponentially)
 
 def generate_confirmation_token(email):
     """
-    Generate a confirmation token for email verification.
+    Generate a token that confirms ownership of an email address.
+
+    It is only accepted by confirm_token and cannot be used to reset a password.
 
     :param email: str - The email address to generate a token for
     :return: str - The generated token
     """
-    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
-    return serializer.dumps(email, salt=current_app.config['SECURITY_PASSWORD_SALT'])
+    return sign_token(email, EMAIL_CONFIRMATION)
 
 
-def confirm_token(token, expiration=3600):
+def confirm_token(token, expiration=TOKEN_MAX_AGE_SECONDS):
     """
     Confirm an email verification token.
 
@@ -31,17 +42,45 @@ def confirm_token(token, expiration=3600):
     :param expiration: int - The maximum age of the token in seconds
     :return: str or None - The email address if valid, None otherwise
     """
-    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
-    try:
-        email = serializer.loads(
-            token,
-            salt=current_app.config['SECURITY_PASSWORD_SALT'],
-            max_age=expiration,
-        )
-        return email
-    except (BadSignature, SignatureExpired) as e:
-        current_app.logger.error(f'Email token confirmation error: {e}')
+    email = load_token(token, EMAIL_CONFIRMATION, max_age=expiration)
+    return email if isinstance(email, str) else None
+
+
+def generate_password_reset_token(user):
+    """
+    Generate a password-reset token for a consumer or merchant.
+
+    The token is bound to the account's current password, so it stops working
+    once the password has been changed (including by using this token).
+
+    :param user: Consumer | Merchant - The account to reset
+    :return: str - The generated token
+    """
+    return sign_token(
+        {"id": user.id, "pwd": password_fingerprint(user)}, PASSWORD_RESET
+    )
+
+
+def verify_password_reset_token(token, expiration=TOKEN_MAX_AGE_SECONDS):
+    """
+    Return the account a password-reset token belongs to, or None if the token
+    is invalid, expired, issued for another purpose or already used.
+
+    :param token: str - The token to verify
+    :param expiration: int - The maximum age of the token in seconds
+    :return: Consumer | Merchant | None
+    """
+    payload = load_token(token, PASSWORD_RESET, max_age=expiration)
+    if not isinstance(payload, dict):
         return None
+    from app.models import Consumer, Merchant
+
+    user = find_account(payload.get("id"))
+    if not isinstance(user, (Consumer, Merchant)):
+        return None
+    if not fingerprint_matches(user, payload.get("pwd")):
+        return None
+    return user
 
 
 def get_mailtrap_client():

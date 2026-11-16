@@ -1,9 +1,10 @@
 import os
 from flask import request, jsonify, make_response
-from flask_jwt_extended import create_access_token, jwt_required
+from flask_jwt_extended import jwt_required
 from flasgger import swag_from
 from app.models import Consumer, Merchant
 from app import limiter
+from app.security import issue_access_token
 from . import auth
 from sqlalchemy import or_
 
@@ -165,7 +166,7 @@ def login():
     )
     response.set_cookie(
         'access_token',
-        value=create_access_token(identity=user.id),
+        value=issue_access_token(user),
         httponly=True,
         secure=True,
         samesite='None'
@@ -334,7 +335,7 @@ def merchant_login():
     )
     response.set_cookie(
         'access_token',
-        value=create_access_token(identity=user.id),
+        value=issue_access_token(user),
         httponly=True,
         secure=True,
         samesite='None'
@@ -389,7 +390,7 @@ def admin_login():
     )
     response.set_cookie(
         'access_token',
-        value=create_access_token(identity=user.id),
+        value=issue_access_token(user),
         httponly=True,
         secure=True,
         samesite='None'
@@ -444,7 +445,7 @@ def register_consumer():
     )
     response.set_cookie(
         'access_token',
-        value=create_access_token(identity=consumer.id),
+        value=issue_access_token(consumer),
         httponly=True,
         secure=True,
         samesite='None'
@@ -564,7 +565,7 @@ def reset_password():
         - Invalid or expired token
     """
     from app import db
-    from app.email import send_email, generate_confirmation_token, confirm_token
+    from app.email import send_email, generate_password_reset_token
 
     data = request.get_json()
     if not data or 'email' not in data:
@@ -578,7 +579,7 @@ def reset_password():
     user = consumer or merchant
     if user:
         try:
-            token = generate_confirmation_token(user.email)
+            token = generate_password_reset_token(user)
             reset_url = f"{os.environ.get('FRONTEND_BASE_URL', 'https://studentx.co.ke')}/auth/user/confirm-reset-password?token={token}"
             from datetime import datetime
             resp = send_email(
@@ -608,26 +609,19 @@ def confirm_reset_password():
         - Successful password reset
         - Invalid or expired token
     """
-    from app import db
-    from app.email import confirm_token
+    from app.email import verify_password_reset_token
 
     token = request.args.get('token')
     if not token:
         return jsonify({"message": "Token is required"}), 400
 
-    email = confirm_token(token)
-    if not email:
+    # Rejects tokens that are expired, meant for something else, or already
+    # used (the password they were issued against has since changed).
+    user = verify_password_reset_token(token)
+    if not user:
         return jsonify({"message": "Invalid or expired token"}), 400
 
-    consumer = db.session.query(Consumer).filter_by(
-        email=email).first()
-    merchant = db.session.query(Merchant).filter_by(
-        email=email).first()
-    user = consumer or merchant
-    if not user:
-        return jsonify({"message": "User not found"}), 404
-
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     password = data.get('password')
     if not password:
         return jsonify({"message": "Password is required"}), 400
