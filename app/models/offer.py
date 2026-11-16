@@ -77,8 +77,8 @@ class Offer(BaseModel, db.Model):
         'categories.id', ondelete='SET NULL'), nullable=True)
 
     # Attributes
-    title: Mapped[str] = mapped_column(String(64), nullable=False)
-    description: Mapped[str] = mapped_column(String(256), nullable=False)
+    title: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(String(512), nullable=False)
     slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     cover_image: Mapped[str] = mapped_column(String(256), nullable=False)
     offer_kind: Mapped[str] = mapped_column(
