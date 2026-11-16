@@ -15,7 +15,6 @@ from typing import List
 from types import SimpleNamespace
 from app.utils import roles_required
 from app.email import send_email
-from config import config as config_class
 
 from app.models.offer import OFFER_STATUS, OFFER_KINDS
 from app.api.offer.helpers import (
@@ -26,14 +25,9 @@ from app.api.offer.helpers import (
 
 from app.models.consumer import VerificationRequestStatus
 
-from itsdangerous import URLSafeTimedSerializer
 import string
 import random
 import os
-
-# Configure this with your secret key
-config = config_class[os.environ.get('FLASK_ENV', 'default')]
-serializer = URLSafeTimedSerializer(config.SECRET_KEY)
 
 
 def generate_temp_password(length=12):
@@ -119,6 +113,7 @@ def send_student_business_outcome_email(application: StudentBusinessApplication,
 
 
 @admin.route('/merchants/register', methods=['POST'])
+@roles_required('admin')
 def register_merchant():
     data = request.get_json() or {}
     email = data.get('email')

@@ -10,15 +10,10 @@ dotenv.load_dotenv('.flaskenv')
 
 app = create_app(os.environ.get('FLASK_ENV') or 'default')
 app.logger.info(
-    f"Starting application in {os.environ.get('FLASK_ENV') or 'default'} mode."
+    f"Starting application in {os.environ.get('FLASK_ENV') or 'default'} mode "
+    f"at revision {app.config['REVISION']}."
 )
 
-@app.route("/healthz")
-def health_check():
-    """
-    Health check endpoint to verify that the application is running.
-    """
-    return {"status": "ok"}, 200
 
 @app.context_processor
 def inject_globals():
@@ -41,10 +36,6 @@ def shutdown_session(exception=None):
     """
     if exception:
         app.logger.error(f"Exception during request: {exception}")
-    global file_handler
-    if file_handler is not None:
-        file_handler.close()
-        file_handler = None
     db.session.remove()
 
 

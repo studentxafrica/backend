@@ -7,6 +7,14 @@ from app.models.offer import (
     Offer, OfferView, DISCOUNT_TYPES, USAGE_TYPES, OFFER_KINDS
 )
 from app.models.coupon import Coupon
+from app.models.merchant import Merchant
+
+
+def from_approved_merchant():
+    """
+    Filter condition for offers students may see: the merchant must be approved.
+    """
+    return Offer.merchant.has(Merchant.approved_on.isnot(None))
 
 
 def is_valid_event_url(url) -> bool:
