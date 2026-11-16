@@ -57,6 +57,9 @@ def create_app(config_name='default'):
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
+    from app.security import check_signing_secrets
+    check_signing_secrets(app.config)
+
     db.init_app(app)
     migrate.init_app(app, db)
     jwt_manager.init_app(app)

@@ -27,8 +27,11 @@ class Config:
     """
     # Application configuration
     APP_NAME = "StudentX"
-    SECRET_KEY = "TheQuickBrownFoxJumpedOverALazyDog$$875867"
-    SECURITY_PASSWORD_SALT = "Stvd3ntXPa$$wordSa1T"
+    # Signing secrets. Read from the environment only; the app refuses to
+    # start without them (see app.security.check_signing_secrets).
+    SECRET_KEY = os.environ.get("SECRET_KEY")
+    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
+    SECURITY_PASSWORD_SALT = os.environ.get("SECURITY_PASSWORD_SALT")
 
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://studentx.co.ke")
     BACKEND_URL = os.environ.get("BACKEND_URL", "https://api.studentx.co.ke")
@@ -166,6 +169,10 @@ class TestingConfig(Config):
     Inherits from Config and can override specific settings for testing.
     """
     TESTING = True
+    # Fixed values so tests never depend on the developer's environment.
+    SECRET_KEY = "test-secret-key-not-used-outside-the-test-suite"
+    JWT_SECRET_KEY = "test-jwt-secret-key-not-used-outside-the-test-suite"
+    SECURITY_PASSWORD_SALT = "test-password-salt-not-used-outside-the-test-suite"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "TEST_DATABASE_URL",
