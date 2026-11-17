@@ -4,8 +4,8 @@
 #   ssh studentx@<host> 'bash -s -- <commit>' < deploy/remote-deploy.sh
 #
 # Fast-forwards the checkout, installs changed requirements, checks the new
-# code can start, reloads gunicorn gracefully, and waits until every worker
-# reports the new commit. Anything that fails before the reload leaves
+# code can start, applies any new database migrations, reloads gunicorn
+# gracefully, and waits until every worker reports the new commit. Anything that fails before the reload leaves
 # production untouched; a failed reload is rolled back to the previous commit.
 #
 # The script arrives on stdin, so every command that could read stdin is given
@@ -117,6 +117,22 @@ if ! FLASK_ENV=production .venv/bin/python -c 'import wsgi' </dev/null >/tmp/stu
   record_revision "$PREVIOUS"
   install_requirements "$TARGET" "$PREVIOUS"
   fail "The new code failed to start (output above). Production was not changed."
+fi
+
+# 3b. Apply new database migrations before the new code takes traffic.
+#     Migrations must only add (tables, columns with defaults) so the code
+#     still running until the reload keeps working. If one fails, the code is
+#     put back and production keeps running the previous commit.
+if ! git diff --quiet "$PREVIOUS" "$TARGET" -- migrations/versions; then
+  log "New database migrations; applying"
+  if ! FLASK_ENV=production .venv/bin/alembic upgrade head </dev/null >/tmp/studentx-deploy-migrate.log 2>&1; then
+    tail -20 /tmp/studentx-deploy-migrate.log
+    git reset --quiet --hard "$PREVIOUS"
+    record_revision "$PREVIOUS"
+    install_requirements "$TARGET" "$PREVIOUS"
+    fail "A database migration failed (output above). The code was not changed; check .venv/bin/alembic current before deploying again."
+  fi
+  log "Database now at $(FLASK_ENV=production .venv/bin/alembic current </dev/null 2>/dev/null | tail -1)"
 fi
 
 # 4. Reload and confirm.

@@ -129,19 +129,31 @@ first four files in `migrations/versions/` are copied unchanged from the
 production server, whose database is at `8d731acd55df`. Later migrations
 build on that.
 
-To apply a new migration in production, after the code is deployed, as the
-app user on the server:
+The deploy applies new migrations itself, after checking the new code
+starts and before it takes traffic. If a migration fails, the code is put
+back and production keeps running the previous commit. So migrations must
+only add (new tables, new columns with defaults): the old code keeps
+running until the reload.
+
+Before merging a change that includes a migration, back up the database as
+the app user on the server:
+
+```sh
+mariadb-dump --single-transaction <database> | gzip > ~/pre-migration-$(date +%F).sql.gz
+```
+
+To check or apply migrations by hand:
 
 ```sh
 cd ~/backend
-mariadb-dump --single-transaction <database> | gzip > ~/pre-migration-$(date +%F).sql.gz
 .venv/bin/alembic current        # expect 8d731acd55df or later
 .venv/bin/alembic upgrade head
 ```
 
 `.venv/bin/alembic downgrade -1` undoes the last one. `f3d1c0a7e2b9`
 (Festive Drops) only creates new tables, so undoing it removes them and
-their data.
+their data. `b7e4c2d91f30` adds the promotional email consent to members
+and opts in everyone who already has an account.
 
 ## Festive Drops picks
 
