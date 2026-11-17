@@ -126,6 +126,13 @@ def sheerid_callback():
         return jsonify({"error": "Failed to fetch verification details"}), 500
 
 
+def _favourite_categories(coupons, limit=3):
+    """The categories a student has claimed most from, most claimed first."""
+    from collections import Counter
+    counts = Counter(c.offer.category.name for c in coupons if c.offer and c.offer.category)
+    return [name for name, _ in counts.most_common(limit)]
+
+
 @user.route('/me', methods=['GET'])
 @roles_required('consumer')
 def get_current_user_profile():
@@ -160,14 +167,16 @@ def get_current_user_profile():
             'discount': saved.offer.discount_value,
             'description': saved.offer.description,
             'category': saved.offer.category.name if saved.offer.category else None,
-            'originalPrice': 1199,
-            'salePrice': 1079,
-            'savings': 120,
+            # No purchase amounts are recorded, so there are no real prices or
+            # savings to show; None tells the site to leave them out.
+            'originalPrice': None,
+            'salePrice': None,
+            'savings': None,
             'expiryDate': saved.offer.end_date.isoformat(),
             'isLimited': False,
             'savedDate': saved.created_at.isoformat(),
-            'rating': 4.8,
-            'verified': True
+            'rating': None,
+            'verified': saved.offer.merchant.approved
         } for saved in saved_offers if saved.offer.merchant.approved],
         'coupons': [{
             'id': coupon.id,
@@ -189,12 +198,12 @@ def get_current_user_profile():
                 'id': coupon.offer.category.id if coupon.offer.category else None,
                 'name': coupon.offer.category.name if coupon.offer.category else None
             },
-            'savings': 45.99
+            'savings': None
         } for coupon in user_coupons],
         'verificationLevel': user.profile_complete,
-        'totalSavings': 1247,
+        'totalSavings': None,
         'dealsUsed': len([coupon for coupon in user.coupons if coupon.status == 'redeemed']),
-        'favoriteCategories': ["Technology", "Food & Dining", "Fashion"],
+        'favoriteCategories': _favourite_categories(user_coupons),
         'studentBusinessPromotion': {
             'enabled': True,
             'title': 'Launch your business on StudentX',
@@ -717,14 +726,14 @@ def get_saved_offers():
         'discount': saved.offer.discount_value,
         'description': saved.offer.description,
         'category': saved.offer.category.name,
-        'originalPrice': 1199,
-        'salePrice': 1079,
-        'savings': 120,
+        'originalPrice': None,
+        'salePrice': None,
+        'savings': None,
         'expiryDate': saved.offer.expiry_date.isoformat(),
         'isLimited': False,
         'savedDate': saved.created_at.isoformat(),
-        'rating': 4.8,
-        'verified': True
+        'rating': None,
+        'verified': saved.offer.merchant.approved
     } for saved in saved_offers if saved.offer.merchant.approved]
     return jsonify({
         "message": "Saved offers retrieved successfully",

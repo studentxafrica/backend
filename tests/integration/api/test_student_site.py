@@ -33,3 +33,11 @@ def test_guests_can_read_an_offer(client, db_session):
 
     assert response.status_code == 200
     assert response.get_json()["data"]["title"] == "Offer guest-readable"
+
+
+def test_profile_shows_no_invented_figures(client, db_session):
+    student = make_student("p2@example.com")
+    body = client.get("/api/v1/user/me", headers=login(client, student)).get_json()["data"]
+
+    assert body["totalSavings"] is None
+    assert body["favoriteCategories"] == []
