@@ -152,33 +152,27 @@ def run_due_picks(triggered_by: str = "scheduler", now: datetime | None = None) 
 
 
 def notify_picked(drop: Drop) -> None:
+    """Email each newly picked member their reward details (transactional)."""
     from app.email import send_email
+    from app.phone import mask_phone
     for pick in drop.picks:
         if pick.notified:
             continue
         consumer = pick.consumer
         send_email(
             to=[consumer.email],
-            subject=f"You were picked: {drop.title}",
+            subject="Congratulations! Your StudentXmas Reward is UNLOCKED!",
             template="email/drop_picked",
             context={
                 "name": consumer.first_name,
                 "drop": drop,
-                "next_step": next_step_text(drop),
-                "expires": pick.expires_at.strftime("%a %d %b"),
+                "pick": pick,
+                "phone": mask_phone(consumer.phone) if consumer.phone else None,
+                "valid_until": pick.expires_at.strftime("%d/%m/%Y"),
             },
         )
         pick.notified = True
     db.session.commit()
-
-
-def next_step_text(drop: Drop) -> str:
-    if drop.kind == "airtime":
-        return "Your airtime is on its way to the number on your StudentX profile."
-    if drop.is_crew:
-        return (f"Add {drop.crew_size - 1} friends to your crew from your StudentX profile. "
-                "Once they're all verified, your crew pass is issued.")
-    return "Open your StudentX profile and show your live pass at the counter."
 
 
 # Crews -----------------------------------------------------------------

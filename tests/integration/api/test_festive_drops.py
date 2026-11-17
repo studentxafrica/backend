@@ -354,3 +354,34 @@ def test_run_due_reports_failure_to_the_monitor_when_a_drop_is_missed(app, db_se
     monkeypatch.setattr("app.drops.service.run_due_picks", lambda triggered_by: [])
     runner.invoke(args=["drops", "run-due"])
     assert calls[-1] == "https://hc.example/abc/fail"
+
+
+# Winner email --------------------------------------------------------------
+
+@pytest.mark.parametrize("kind,crew_size,expect,leave_out", [
+    ("airtime", None, ["Sent directly to your phone number (0712 ••• 678)", "credited directly"], ["Present Your StudentX ID", "/crew/"]),
+    ("voucher", None, ["Present Your StudentX ID", "/pass\""], ["Sent directly to your phone", "/crew/"]),
+    ("crew", 4, ["Every member of your group", "/crew/", "Set up your crew"], ["Sent directly to your phone"]),
+])
+def test_winner_email_matches_the_reward(client, db_session, sent_mail, kind, crew_size, expect, leave_out):
+    from flask import render_template
+    from app.drops.service import run_pick
+
+    campaign, drops = make_campaign([(-1, kind, 1, crew_size)])
+    student = make_student("winner@example.com", first="Wanjiru")
+    assert join(client, login(client, student)).status_code == 201
+    backdate_membership(campaign, student, 10)
+    run_pick(drops[0].id, "test")
+
+    [mail] = sent_mail
+    assert mail["subject"] == "Congratulations! Your StudentXmas Reward is UNLOCKED!"
+    pick = mail["context"]["pick"]
+    html = render_template("email/drop_picked.html", frontend_url="https://studentx.co.ke", context=mail["context"])
+    assert "Hey Wanjiru," in html
+    assert mail["context"]["valid_until"] == pick.expires_at.strftime("%d/%m/%Y") and mail["context"]["valid_until"] in html
+    for text in expect:
+        assert text in html, text
+    for text in leave_out:
+        assert text not in html, text
+    if kind != "airtime":
+        assert pick.reference in html
