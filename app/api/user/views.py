@@ -157,6 +157,7 @@ def get_current_user_profile():
         'location': user.location,
         'bio': user.bio,
         'isVerified': user.verified,
+        'marketingEmails': user.marketing_consent,
         'verificationStatus': user.verification_status.value if user.verification_status.value else 'pending',
         'savedDeals': [{
             'id': saved.id,
@@ -681,12 +682,18 @@ def update_current_user_profile():
         'profile_picture': str
     }
 
+    previous_email = user.email
     # Update user attributes
     for key, value in data.items():
         if hasattr(user, key) and key in ALLOWED_UPDATE_FIELDS:
             setattr(user, key, value)
 
     user.save()
+
+    if user.marketing_consent and (
+            user.email != previous_email or {'first_name', 'last_name'} & set(data)):
+        from app.brevo import sync_member_soon
+        sync_member_soon(user.id, previous_email=previous_email)
 
     return jsonify({
         "message": "User profile updated successfully",
@@ -705,9 +712,27 @@ def update_current_user_profile():
             'joinDate': user.created_at.isoformat(),
             'location': user.location,
             'bio': user.bio,
-            'isVerified': user.verified
+            'isVerified': user.verified,
+            'marketingEmails': user.marketing_consent,
         }
     }), 200
+
+
+@user.route('/me/marketing-emails', methods=['PUT'])
+@roles_required('consumer')
+def update_marketing_emails():
+    """Turn promotional email on or off. Body: {"subscribed": true|false}."""
+    user: Consumer = g.user
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get('subscribed'), bool):
+        return jsonify({"message": "Send subscribed as true or false"}), 400
+    subscribed = data['subscribed']
+    resubscribe = subscribed and not user.marketing_consent
+    user.set_marketing_consent(subscribed, "profile")
+    user.save()
+    from app.brevo import sync_member_soon
+    sync_member_soon(user.id, resubscribe=resubscribe)
+    return jsonify({"data": {"marketingEmails": user.marketing_consent}}), 200
 
 
 @user.route("/me/saved-offers", methods=["GET"])

@@ -157,6 +157,38 @@ Other commands: `flask drops seed-studentxmas` creates the campaign;
 `flask drops set-venue-pin <drop-id>` sets the PIN a venue uses to mark
 passes as used.
 
+## Promotional email (Brevo)
+
+The backend sends transactional email only (Mailtrap). Promotional email is
+sent from Brevo, to the members who agreed to it. Members who had an account
+before consent was asked are opted in; new members opt in at sign-up, and
+anyone can change it on their profile.
+
+The backend keeps one Brevo list in step with that consent. Only consenting
+members are sent to Brevo (email, first and last name, member id). Add to
+the server's `.env`:
+
+| Setting | Value |
+| --- | --- |
+| `BREVO_API_KEY` | an API key from Brevo > SMTP & API > API keys |
+| `BREVO_LIST_ID` | the id of the members list |
+| `BREVO_WEBHOOK_TOKEN` | a random value (as for the signing secrets below) |
+
+Then:
+
+1. Restart the application, and run `.venv/bin/flask --app wsgi brevo sync --dry-run`
+   to see what will be sent, then `.venv/bin/flask --app wsgi brevo sync` to add every
+   consenting member to the list.
+2. In Brevo > Settings > Webhooks, add a marketing webhook to
+   `https://api.studentx.co.ke/api/v1/integrations/brevo/webhook` for the
+   "Unsubscribed" and "Marked as spam" events, with bearer authentication
+   using `BREVO_WEBHOOK_TOKEN`. Members who unsubscribe from a campaign are
+   then opted out on StudentX too.
+
+After that, sign-ups and profile changes reach Brevo within seconds. Run
+`brevo sync` again before each campaign to pick up anything missed (for
+example while Brevo was unreachable); it is safe to run at any time.
+
 ## Signing secrets
 
 The backend will not start unless these are set in the environment or `.env`.

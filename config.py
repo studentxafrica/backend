@@ -111,6 +111,12 @@ class Config:
         "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
     )
 
+    # Brevo marketing list (see app/brevo.py); unset means no syncing
+    BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
+    BREVO_LIST_ID = os.environ.get("BREVO_LIST_ID")
+    BREVO_API_URL = os.environ.get("BREVO_API_URL", "https://api.brevo.com/v3")
+    BREVO_WEBHOOK_TOKEN = os.environ.get("BREVO_WEBHOOK_TOKEN")
+
 
 class DevelopmentConfig(Config):
     """
@@ -175,6 +181,10 @@ class TestingConfig(Config):
     Testing configuration class.
     Inherits from Config and can override specific settings for testing.
     """
+    # Tests never reach Brevo unless a test points it at a stand-in
+    BREVO_API_KEY = None
+    BREVO_LIST_ID = None
+    BREVO_WEBHOOK_TOKEN = None
     TESTING = True
     # Fixed values so tests never depend on the developer's environment.
     SECRET_KEY = "test-secret-key-not-used-outside-the-test-suite"

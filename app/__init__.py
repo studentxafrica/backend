@@ -234,4 +234,10 @@ def create_app(config_name='default'):
     from app.drops.cli import drops_cli
     app.cli.add_command(drops_cli)
 
+    from app.api.integrations import integrations as integrations_blueprint
+    app.register_blueprint(integrations_blueprint, url_prefix='/api/v1/integrations')
+
+    from app.brevo import brevo_cli
+    app.cli.add_command(brevo_cli)
+
     return app

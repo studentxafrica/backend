@@ -58,6 +58,11 @@ services:
       CLOUDINARY_API_SECRET: staging-secret
       MAILTRAP_API_TOKEN: staging
       MAILTRAP_STAND_IN: http://fakes:9000
+      # Contacts go to the local Brevo stand-in, never to the real account.
+      BREVO_API_URL: http://fakes:9000/brevo/v3
+      BREVO_API_KEY: staging
+      BREVO_LIST_ID: "7"
+      BREVO_WEBHOOK_TOKEN: staging-brevo-hook
       FRONTEND_URL: http://localhost:8081
       FRONTEND_BASE_URL: http://localhost:8081
       BACKEND_URL: https://localhost:8443

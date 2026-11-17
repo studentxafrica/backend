@@ -448,6 +448,12 @@ def register_consumer():
         date_of_birth=date_of_birth,
     )
     consumer.save()
+    # Promotional email only if the student ticked the box
+    if data.get('marketing_consent') is True:
+        consumer.set_marketing_consent(True, "signup")
+        consumer.save()
+        from app.brevo import sync_member_soon
+        sync_member_soon(consumer.id)
     send_email(
         subject="Welcome to StudentX!",
         to=[consumer.email],
