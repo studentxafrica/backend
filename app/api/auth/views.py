@@ -12,7 +12,9 @@ from flask import current_app
 
 
 @auth.post('/user/check-email')
-@limiter.limit("5 per minute")
+# Many students share one public address (mobile carriers, campus Wi-Fi), so
+# this limit is per address but generous; it still stops bulk email probing.
+@limiter.limit("60 per minute")
 def check_email():
     """
     Check if an email is already registered.
@@ -20,7 +22,7 @@ def check_email():
     tags:
         - Auth
     summary: Check email existence
-    description: Check if an email is already registered for a consumer. Rate limited to 5 requests per minute.
+    description: Check if an email is already registered for a consumer. Rate limited to 60 requests per minute per address.
     parameters:
         - in: body
           name: body
