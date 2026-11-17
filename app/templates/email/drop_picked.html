@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>You were picked</title>
+</head>
+
+<body style="margin:0;padding:24px;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;color:#262628">
+	<div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;padding:28px">
+		<p style="margin:0 0 4px;font-size:13px;color:#596168">StudentXmas</p>
+		<h1 style="margin:0 0 16px;font-size:22px">Hi {{ context.name }}, you were picked!</h1>
+		<p style="margin:0 0 8px;font-size:16px"><strong>{{ context.drop.title }}</strong></p>
+		<p style="margin:0 0 16px;font-size:15px;line-height:1.5;color:#4c5359">{{ context.next_step }}</p>
+		<p style="margin:0 0 24px;font-size:14px;color:#596168">Use it by {{ context.expires }}.</p>
+		<a href="{{ frontend_url }}/me?tab=drops" style="display:inline-block;background:#db0271;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">See it in your profile</a>
+		<p style="margin:24px 0 0;font-size:12px;line-height:1.5;color:#596168">You're getting this because you joined StudentXmas on StudentX. <a href="{{ frontend_url }}/drops/terms" style="color:#596168">StudentXmas terms</a></p>
+	</div>
+</body>
+
+</html>

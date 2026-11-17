@@ -225,4 +225,10 @@ def create_app(config_name='default'):
     app.register_blueprint(coupon_blueprint, url_prefix='/api/v1/coupon')
     app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
 
+    from app.api.drops import drops as drops_blueprint
+    app.register_blueprint(drops_blueprint, url_prefix='/api/v1/drops')
+
+    from app.drops.cli import drops_cli
+    app.cli.add_command(drops_cli)
+
     return app

@@ -47,7 +47,9 @@ logs in to the backend server as `studentx` over SSH and runs
    the new commit;
 5. rolls back to the previous commit if it never does.
 
-Database migrations are not run (`migrations/versions/` is not in git).
+Database migrations are not run by the deploy. They are in
+`migrations/versions/` and are applied by hand (see Database migrations
+below).
 
 (The old FTP workflow uploaded to the frontend web host, since
 `ftp.studentx.co.ke` is `46.62.173.211`, not to the backend server, which runs
@@ -119,6 +121,64 @@ contains it, or on the server run `git reset --hard <commit>` and then
 3. On the server, discard the uncommitted `app/models/offer.py` change
    (`git checkout -- app/models/offer.py`); the release contains it.
 4. Merge into `staging`. The workflow deploys it.
+
+## Database migrations
+
+Production's schema was created before migrations were kept in git. The
+first four files in `migrations/versions/` are copied unchanged from the
+production server, whose database is at `8d731acd55df`. Later migrations
+build on that.
+
+To apply a new migration in production, after the code is deployed, as the
+app user on the server:
+
+```sh
+cd ~/backend
+mariadb-dump --single-transaction <database> | gzip > ~/pre-migration-$(date +%F).sql.gz
+.venv/bin/alembic current        # expect 8d731acd55df or later
+.venv/bin/alembic upgrade head
+```
+
+`.venv/bin/alembic downgrade -1` undoes the last one. `f3d1c0a7e2b9`
+(Festive Drops) only creates new tables, so undoing it removes them and
+their data.
+
+## Festive Drops picks
+
+Each drop is picked at random at its pick time by `flask drops run-due`,
+which is safe to run every minute. Production has no background worker, so
+a server admin installs a timer:
+
+```ini
+# /etc/systemd/system/studentx-drops.service
+[Service]
+Type=oneshot
+User=studentx
+WorkingDirectory=/home/studentx/backend
+Environment=FLASK_ENV=production
+ExecStart=/home/studentx/backend/.venv/bin/flask --app wsgi drops run-due
+
+# /etc/systemd/system/studentx-drops.timer
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+To be alerted when a pick fails, is missed (still unpicked 5 minutes after
+its time), or the timer stops running: in healthchecks.io create a check
+named "StudentX drop picks" with a period of 1 minute and a grace time of 10
+minutes, and add its ping URL to the server's `.env` as
+`DROPS_HEALTHCHECK_URL`. Each run of `flask drops run-due` then reports to
+it.
+
+Without the timer, an admin can pick a drop from the Drops screen in the
+admin portal ("Pick now"), with
+`POST /api/v1/drops/admin/drops/<id>/pick` or run the command by hand.
+Other commands: `flask drops seed-studentxmas` creates the campaign;
+`flask drops set-venue-pin <drop-id>` sets the PIN a venue uses to mark
+passes as used.
 
 ## Signing secrets
 

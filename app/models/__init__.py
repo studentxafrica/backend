@@ -18,3 +18,10 @@ from app.models.verification import\
 from app.models.student_business_application import \
     StudentBusinessApplication as StudentBusinessApplication, \
     StudentBusinessApplicationDocument as StudentBusinessApplicationDocument
+from app.models.campaign import \
+    Campaign as Campaign, \
+    Drop as Drop, \
+    CampaignMember as CampaignMember, \
+    DropRun as DropRun, \
+    DropPick as DropPick, \
+    CrewMember as CrewMember
