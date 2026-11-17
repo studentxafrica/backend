@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from app.models.base_model import BaseModel
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import Column, String, DateTime, Enum  # type: ignore
+from sqlalchemy import Boolean, Column, String, DateTime, Enum, false  # type: ignore
 from sqlalchemy.orm import relationship, mapped_column  # type: ignore
 import enum
 
@@ -42,6 +42,12 @@ class Consumer(BaseModel, db.Model):
     verification_reminder_sent_on = mapped_column(
         DateTime, nullable=True, default=None)
     _password = mapped_column(String(256), nullable=False)
+    # Promotional email (sent from Brevo). Members who joined before this was
+    # asked are opted in; new members opt in at sign-up or on their profile.
+    marketing_consent = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    # Who last set it: existing_member, signup, profile or unsubscribe_link.
+    marketing_consent_source = mapped_column(String(32), nullable=True, default=None)
+    marketing_consent_updated_at = mapped_column(DateTime, nullable=True, default=None)
 
     verification_requests = relationship(
         'VerificationRequest', back_populates='user', cascade='all, delete-orphan')
@@ -55,6 +61,12 @@ class Consumer(BaseModel, db.Model):
         back_populates='consumer',
         cascade='all, delete-orphan'
     )
+
+    def set_marketing_consent(self, consent: bool, source: str) -> None:
+        from datetime import datetime, timezone
+        self.marketing_consent = bool(consent)
+        self.marketing_consent_source = source
+        self.marketing_consent_updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} - {self.id.split('-')[0]}"

@@ -129,56 +129,85 @@ first four files in `migrations/versions/` are copied unchanged from the
 production server, whose database is at `8d731acd55df`. Later migrations
 build on that.
 
-To apply a new migration in production, after the code is deployed, as the
-app user on the server:
+The deploy applies new migrations itself, after checking the new code
+starts and before it takes traffic. If a migration fails, the code is put
+back and production keeps running the previous commit. So migrations must
+only add (new tables, new columns with defaults): the old code keeps
+running until the reload.
+
+Before merging a change that includes a migration, back up the database as
+the app user on the server:
+
+```sh
+mariadb-dump --single-transaction <database> | gzip > ~/pre-migration-$(date +%F).sql.gz
+```
+
+To check or apply migrations by hand:
 
 ```sh
 cd ~/backend
-mariadb-dump --single-transaction <database> | gzip > ~/pre-migration-$(date +%F).sql.gz
-.venv/bin/alembic current        # expect 8d731acd55df or later
-.venv/bin/alembic upgrade head
+FLASK_ENV=production .venv/bin/alembic current        # expect 8d731acd55df or later
+FLASK_ENV=production .venv/bin/alembic upgrade head
 ```
 
 `.venv/bin/alembic downgrade -1` undoes the last one. `f3d1c0a7e2b9`
 (Festive Drops) only creates new tables, so undoing it removes them and
-their data.
+their data. `b7e4c2d91f30` adds the promotional email consent to members
+and opts in everyone who already has an account.
 
 ## Festive Drops picks
 
-Each drop is picked at random at its pick time by `flask drops run-due`,
-which is safe to run every minute. Production has no background worker, so
-a server admin installs a timer:
+An admin picks each drop's winners by hand, from the StudentXmas screen in
+the admin portal ("Pick winners"), at or after the drop's pick time. The
+pick is random among verified members who joined before that time, and
+winners are emailed straight away. The screen flags drops that are ready to
+pick. The same pick is available as
+`POST /api/v1/drops/admin/drops/<id>/pick` or `flask drops run-due` (which
+picks every drop whose time has passed).
 
-```ini
-# /etc/systemd/system/studentx-drops.service
-[Service]
-Type=oneshot
-User=studentx
-WorkingDirectory=/home/studentx/backend
-Environment=FLASK_ENV=production
-ExecStart=/home/studentx/backend/.venv/bin/flask --app wsgi drops run-due
-
-# /etc/systemd/system/studentx-drops.timer
-[Timer]
-OnCalendar=*-*-* *:*:00
-Persistent=true
-[Install]
-WantedBy=timers.target
-```
-
-To be alerted when a pick fails, is missed (still unpicked 5 minutes after
-its time), or the timer stops running: in healthchecks.io create a check
-named "StudentX drop picks" with a period of 1 minute and a grace time of 10
-minutes, and add its ping URL to the server's `.env` as
-`DROPS_HEALTHCHECK_URL`. Each run of `flask drops run-due` then reports to
-it.
-
-Without the timer, an admin can pick a drop from the Drops screen in the
-admin portal ("Pick now"), with
-`POST /api/v1/drops/admin/drops/<id>/pick` or run the command by hand.
 Other commands: `flask drops seed-studentxmas` creates the campaign;
 `flask drops set-venue-pin <drop-id>` sets the PIN a venue uses to mark
 passes as used.
+
+Run every `flask` and `alembic` command on the server as the app user, from
+`~/backend`, with the production settings; without `FLASK_ENV=production`
+they start with the development settings instead:
+
+```sh
+FLASK_ENV=production .venv/bin/flask --app wsgi drops seed-studentxmas
+```
+
+## Promotional email (Brevo)
+
+The backend sends transactional email only (Mailtrap). Promotional email is
+sent from Brevo, to the members who agreed to it. Members who had an account
+before consent was asked are opted in; new members opt in at sign-up, and
+anyone can change it on their profile.
+
+The backend keeps one Brevo list in step with that consent. Only consenting
+members are sent to Brevo (email, first and last name, member id). Add to
+the server's `.env`:
+
+| Setting | Value |
+| --- | --- |
+| `BREVO_API_KEY` | an API key from Brevo > SMTP & API > API keys |
+| `BREVO_LIST_ID` | the id of the members list |
+| `BREVO_WEBHOOK_TOKEN` | a random value (as for the signing secrets below) |
+
+Then:
+
+1. Restart the application, and run `FLASK_ENV=production .venv/bin/flask --app wsgi brevo sync --dry-run`
+   to see what will be sent, then `FLASK_ENV=production .venv/bin/flask --app wsgi brevo sync` to add every
+   consenting member to the list.
+2. In Brevo > Settings > Webhooks, add a marketing webhook to
+   `https://api.studentx.co.ke/api/v1/integrations/brevo/webhook` for the
+   "Unsubscribed" and "Marked as spam" events, with bearer authentication
+   using `BREVO_WEBHOOK_TOKEN`. Members who unsubscribe from a campaign are
+   then opted out on StudentX too.
+
+After that, sign-ups and profile changes reach Brevo within seconds. Run
+`brevo sync` again before each campaign to pick up anything missed (for
+example while Brevo was unreachable); it is safe to run at any time.
 
 ## Signing secrets
 

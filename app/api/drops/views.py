@@ -409,7 +409,7 @@ def admin_campaign(slug):
             "id": d.id, "number": i + 1, "title": d.title, "brand": d.brand, "description": d.description,
             "coverImage": d.cover_image, "kind": d.kind, "quantity": d.quantity, "crewSize": d.crew_size,
             "pickAt": _iso(d.pick_at), "status": d.status,
-            "overdue": d.status == "upcoming" and now > d.pick_at + service.PICK_GRACE,
+            "readyToPick": d.status == "upcoming" and now >= d.pick_at,
             "venuePinSet": bool(d._venue_pin),
             "run": {"ranAt": _iso(d.run.ran_at), "eligible": d.run.eligible_count, "picked": d.run.picked_count,
                     "shortfall": d.run.shortfall, "triggeredBy": d.run.triggered_by} if d.run else None,
