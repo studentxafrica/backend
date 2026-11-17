@@ -146,8 +146,8 @@ To check or apply migrations by hand:
 
 ```sh
 cd ~/backend
-.venv/bin/alembic current        # expect 8d731acd55df or later
-.venv/bin/alembic upgrade head
+FLASK_ENV=production .venv/bin/alembic current        # expect 8d731acd55df or later
+FLASK_ENV=production .venv/bin/alembic upgrade head
 ```
 
 `.venv/bin/alembic downgrade -1` undoes the last one. `f3d1c0a7e2b9`
@@ -169,6 +169,14 @@ Other commands: `flask drops seed-studentxmas` creates the campaign;
 `flask drops set-venue-pin <drop-id>` sets the PIN a venue uses to mark
 passes as used.
 
+Run every `flask` and `alembic` command on the server as the app user, from
+`~/backend`, with the production settings; without `FLASK_ENV=production`
+they start with the development settings instead:
+
+```sh
+FLASK_ENV=production .venv/bin/flask --app wsgi drops seed-studentxmas
+```
+
 ## Promotional email (Brevo)
 
 The backend sends transactional email only (Mailtrap). Promotional email is
@@ -188,8 +196,8 @@ the server's `.env`:
 
 Then:
 
-1. Restart the application, and run `.venv/bin/flask --app wsgi brevo sync --dry-run`
-   to see what will be sent, then `.venv/bin/flask --app wsgi brevo sync` to add every
+1. Restart the application, and run `FLASK_ENV=production .venv/bin/flask --app wsgi brevo sync --dry-run`
+   to see what will be sent, then `FLASK_ENV=production .venv/bin/flask --app wsgi brevo sync` to add every
    consenting member to the list.
 2. In Brevo > Settings > Webhooks, add a marketing webhook to
    `https://api.studentx.co.ke/api/v1/integrations/brevo/webhook` for the
