@@ -228,6 +228,9 @@ def create_app(config_name='default'):
     from app.api.drops import drops as drops_blueprint
     app.register_blueprint(drops_blueprint, url_prefix='/api/v1/drops')
 
+    from app.api.merchants import merchants as merchants_blueprint
+    app.register_blueprint(merchants_blueprint, url_prefix='/api/v1/merchants')
+
     from app.drops.cli import drops_cli
     app.cli.add_command(drops_cli)
 

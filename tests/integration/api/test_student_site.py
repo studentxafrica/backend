@@ -41,3 +41,14 @@ def test_profile_shows_no_invented_figures(client, db_session):
 
     assert body["totalSavings"] is None
     assert body["favoriteCategories"] == []
+
+
+def test_home_page_partners_lists_approved_merchants_with_live_offers(client, db_session):
+    from tests.support import make_merchant, make_offer
+
+    make_offer(make_merchant("live@example.com", approved=True), "live-offer")
+    make_merchant("unapproved@example.com", approved=False)
+
+    data = client.get("/api/v1/merchants/featured").get_json()["data"]
+
+    assert [m["name"] for m in data] == ["live"]
