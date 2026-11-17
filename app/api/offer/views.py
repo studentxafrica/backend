@@ -56,25 +56,27 @@ def serialize_offer_category(category: Category | None):
 
 @offer.route('/<id>', methods=['GET'])
 @swag_from('docs/get-offer.yml')
-@roles_required('consumer')
 def get_offer_by_id(id: str):
     """
-    Get offer by ID.
+    Get offer by ID. Anyone can read an offer; claiming it needs an account.
     Scenarios:
         - Get offer by ID
         - Offer not found
     """
-    # try:
-    # # Fetch offer by ID from the database
-    user = g.user
-    if not user:
-        return jsonify({"message": "Couldn't verify current user identity"}), 401
     offer: Offer | None = db.session.query(Offer).filter(
         Offer.id == id, from_approved_merchant()).first()  # type: ignore[arg-type]
     if not offer:
         return jsonify({"message": "Offer not found"}), 404
 
-    track_offer_view(offer.id, user.id)
+    viewer_id = None
+    try:
+        from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
+        verify_jwt_in_request(optional=True, locations=['cookies', 'headers'])
+        viewer_id = get_jwt_identity()
+    except Exception:
+        viewer_id = None
+    if viewer_id and db.session.get(Consumer, viewer_id):
+        track_offer_view(offer.id, viewer_id)
     return jsonify({
         "message": "Successfully fetched offer",
         "data": {

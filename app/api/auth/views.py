@@ -12,7 +12,9 @@ from flask import current_app
 
 
 @auth.post('/user/check-email')
-@limiter.limit("5 per minute")
+# Many students share one public address (mobile carriers, campus Wi-Fi), so
+# this limit is per address but generous; it still stops bulk email probing.
+@limiter.limit("60 per minute")
 def check_email():
     """
     Check if an email is already registered.
@@ -20,7 +22,7 @@ def check_email():
     tags:
         - Auth
     summary: Check email existence
-    description: Check if an email is already registered for a consumer. Rate limited to 5 requests per minute.
+    description: Check if an email is already registered for a consumer. Rate limited to 60 requests per minute per address.
     parameters:
         - in: body
           name: body
@@ -421,12 +423,29 @@ def register_consumer():
     ).first()
     if consumer:
         return jsonify({"message": "Email already exists"}), 409
+
+    from app.phone import normalise_kenyan_mobile
+    phone = None
+    if data.get('phone'):
+        phone = normalise_kenyan_mobile(data.get('phone'))
+        if not phone:
+            return jsonify({"message": "Enter a Kenyan mobile number, like 0712 345 678"}), 400
+    date_of_birth = None
+    if data.get('date_of_birth'):
+        from datetime import datetime
+        try:
+            date_of_birth = datetime.strptime(str(data.get('date_of_birth'))[:10], '%Y-%m-%d')
+        except ValueError:
+            return jsonify({"message": "Date of birth must be YYYY-MM-DD"}), 400
+
     consumer = Consumer(
         first_name=data.get('first_name'),
         last_name=data.get('last_name'),
         email=data.get('email'),
         school=data.get('school'),
         password=data.get('password'),
+        phone=phone,
+        date_of_birth=date_of_birth,
     )
     consumer.save()
     send_email(
