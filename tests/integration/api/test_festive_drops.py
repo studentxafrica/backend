@@ -316,13 +316,13 @@ def test_seed_command_creates_the_twelve_studentxmas_drops_once(app, db_session)
     assert campaign.drops[0].pick_at == datetime(2026, 11, 20, 9, 0)
 
 
-def test_admin_overview_flags_overdue_drops_and_edits_a_drop(client, db_session, admin_token):
+def test_admin_overview_flags_drops_ready_to_pick_and_edits_a_drop(client, db_session, admin_token):
     campaign, drops = make_campaign([(-1, "voucher", 1, None), (24, "airtime", 2, None)])
     client.delete_cookie("access_token")
     headers = bearer(admin_token)
 
     data = client.get(f"/api/v1/drops/admin/campaigns/{SLUG}", headers=headers).get_json()["data"]
-    assert [d["overdue"] for d in data["drops"]] == [True, False]
+    assert [d["readyToPick"] for d in data["drops"]] == [True, False]
     assert data["drops"][0]["venuePinSet"] is False
 
     response = client.put(f"/api/v1/drops/admin/drops/{drops[0].id}", headers=headers,
@@ -335,25 +335,17 @@ def test_admin_overview_flags_overdue_drops_and_edits_a_drop(client, db_session,
     assert client.put(f"/api/v1/drops/admin/drops/{drops[0].id}", headers=headers, json={"title": ""}).status_code == 400
 
 
-def test_run_due_reports_failure_to_the_monitor_when_a_drop_is_missed(app, db_session, monkeypatch):
-    from app.models.campaign import Drop
+def test_run_due_picks_drops_whose_time_has_passed(app, client, db_session):
+    from app.models.campaign import DropPick
 
-    calls = []
-    monkeypatch.setenv("DROPS_HEALTHCHECK_URL", "https://hc.example/abc")
-    monkeypatch.setattr("requests.post", lambda url, data=None, timeout=None: calls.append(url))
-    campaign, drops = make_campaign([(-1, "airtime", 1, None)])
-    runner = app.test_cli_runner()
+    campaign, drops = make_campaign([(-1, "airtime", 1, None), (24, "airtime", 1, None)])
+    student = make_student("due@example.com")
+    assert join(client, login(client, student)).status_code == 201
+    backdate_membership(campaign, student, 10)
 
-    runner.invoke(args=["drops", "run-due"])
-    assert calls == ["https://hc.example/abc"]
-
-    # A drop left unpicked past its time (e.g. the pick failed) is reported as a failure.
-    stuck = Drop(campaign_id=campaign.id, title="Stuck", brand="X", kind="airtime", quantity=1,
-                 pick_at=utcnow() - timedelta(hours=2), use_within_days=10)
-    stuck.save()
-    monkeypatch.setattr("app.drops.service.run_due_picks", lambda triggered_by: [])
-    runner.invoke(args=["drops", "run-due"])
-    assert calls[-1] == "https://hc.example/abc/fail"
+    result = app.test_cli_runner().invoke(args=["drops", "run-due"])
+    assert "picked 1 of 1 eligible" in result.output
+    assert [p.drop_id for p in db_session.query(DropPick).all()] == [drops[0].id]
 
 
 # Winner email --------------------------------------------------------------

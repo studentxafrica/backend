@@ -19,7 +19,6 @@ from app.models.campaign import (DROP_STATUS, FULFILMENT_STATUS, Campaign,
 
 PASS_CODE_SECONDS = 30
 # How late a pick can be before it counts as missed (alerts, admin screen).
-PICK_GRACE = timedelta(minutes=5)
 _CODE_ALPHABET = "ACDEFGHJKMNPQRTUVWXY3479"
 
 
@@ -265,10 +264,3 @@ def redeem_pass(code: str, pin: str) -> DropPick:
     pick.fulfilment_status = FULFILMENT_STATUS["REDEEMED"]
     pick.save()
     return pick
-
-
-def overdue_drops(now: datetime | None = None) -> list[Drop]:
-    """Drops still unpicked more than PICK_GRACE after their pick time."""
-    now = now or utcnow()
-    return (db.session.query(Drop)
-            .filter(Drop.status == DROP_STATUS["UPCOMING"], Drop.pick_at < now - PICK_GRACE).all())

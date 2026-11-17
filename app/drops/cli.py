@@ -1,7 +1,7 @@
 """
 `flask drops ...` commands.
 
-    flask drops run-due            pick every drop whose time has come (run every minute)
+    flask drops run-due            pick every drop whose time has come
     flask drops seed-studentxmas   create the StudentXmas campaign and its 12 drops
     flask drops set-venue-pin      set the PIN a venue uses to mark passes as used
 """
@@ -44,44 +44,14 @@ def _pick_time(day: str) -> datetime:
 
 @drops_cli.command("run-due")
 def run_due():
-    """Pick every drop whose pick time has passed. Safe to run every minute."""
-    from app.drops.service import overdue_drops, run_due_picks
-    try:
-        runs = run_due_picks(triggered_by="scheduler")
-    except Exception as err:
-        _report_to_monitor(ok=False, message=f"Pick run failed: {err}")
-        raise
+    """Pick every drop whose pick time has passed (admins normally pick from the admin portal)."""
+    from app.drops.service import run_due_picks
+    runs = run_due_picks(triggered_by="command")
     for run in runs:
         click.echo(f"{run.drop.title} ({run.drop.pick_at:%Y-%m-%d}): picked {run.picked_count} "
                    f"of {run.eligible_count} eligible, shortfall {run.shortfall}")
     if not runs:
         click.echo("No drops due.")
-
-    missed = overdue_drops()
-    if missed:
-        message = "Not picked: " + ", ".join(f"{d.title} ({d.pick_at:%Y-%m-%d %H:%M} UTC)" for d in missed)
-        click.echo(message, err=True)
-        _report_to_monitor(ok=False, message=message)
-    else:
-        _report_to_monitor(ok=True, message=f"{len(runs)} picked")
-
-
-def _report_to_monitor(ok: bool, message: str) -> None:
-    """
-    Ping the health monitor (healthchecks.io) so a failed or missed pick, or a
-    timer that stops running, raises an alert. Set DROPS_HEALTHCHECK_URL to the
-    check's ping URL; without it nothing is sent.
-    """
-    import os
-
-    import requests
-    url = os.environ.get("DROPS_HEALTHCHECK_URL")
-    if not url:
-        return
-    try:
-        requests.post(url if ok else f"{url.rstrip('/')}/fail", data=message.encode()[:10000], timeout=10)
-    except requests.RequestException as err:
-        click.echo(f"Could not reach the health monitor: {err}", err=True)
 
 
 @drops_cli.command("seed-studentxmas")

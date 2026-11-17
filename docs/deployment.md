@@ -145,37 +145,14 @@ their data.
 
 ## Festive Drops picks
 
-Each drop is picked at random at its pick time by `flask drops run-due`,
-which is safe to run every minute. Production has no background worker, so
-a server admin installs a timer:
+An admin picks each drop's winners by hand, from the StudentXmas screen in
+the admin portal ("Pick winners"), at or after the drop's pick time. The
+pick is random among verified members who joined before that time, and
+winners are emailed straight away. The screen flags drops that are ready to
+pick. The same pick is available as
+`POST /api/v1/drops/admin/drops/<id>/pick` or `flask drops run-due` (which
+picks every drop whose time has passed).
 
-```ini
-# /etc/systemd/system/studentx-drops.service
-[Service]
-Type=oneshot
-User=studentx
-WorkingDirectory=/home/studentx/backend
-Environment=FLASK_ENV=production
-ExecStart=/home/studentx/backend/.venv/bin/flask --app wsgi drops run-due
-
-# /etc/systemd/system/studentx-drops.timer
-[Timer]
-OnCalendar=*-*-* *:*:00
-Persistent=true
-[Install]
-WantedBy=timers.target
-```
-
-To be alerted when a pick fails, is missed (still unpicked 5 minutes after
-its time), or the timer stops running: in healthchecks.io create a check
-named "StudentX drop picks" with a period of 1 minute and a grace time of 10
-minutes, and add its ping URL to the server's `.env` as
-`DROPS_HEALTHCHECK_URL`. Each run of `flask drops run-due` then reports to
-it.
-
-Without the timer, an admin can pick a drop from the Drops screen in the
-admin portal ("Pick now"), with
-`POST /api/v1/drops/admin/drops/<id>/pick` or run the command by hand.
 Other commands: `flask drops seed-studentxmas` creates the campaign;
 `flask drops set-venue-pin <drop-id>` sets the PIN a venue uses to mark
 passes as used.
