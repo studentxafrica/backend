@@ -168,7 +168,8 @@ picks every drop whose time has passed).
 Other commands: `flask drops seed-studentxmas` creates the campaign;
 `flask drops update-studentxmas-wording [--dry-run]` sets every drop's
 title, brand, card badge, subtext and details to the wording in the
-promotion tracker (kept in `app/drops/studentxmas.py`), overwriting edits
+promotion tracker (kept in `app/drops/studentxmas.py`) and the terms version
+students agree to when they join, overwriting edits
 made in the admin portal; `flask drops set-venue-pin <drop-id>` sets the
 PIN a venue uses to mark passes as used.
 

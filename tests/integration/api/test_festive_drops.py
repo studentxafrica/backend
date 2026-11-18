@@ -331,6 +331,7 @@ def test_wording_update_restores_the_tracker_copy_and_nothing_else(app, db_sessi
     campaign = db_session.query(Campaign).filter_by(slug="studentxmas").one()
     drop = sorted(campaign.drops, key=lambda d: d.pick_at)[2]
     drop.title, drop.brand, drop.cover_image = "KSh 1,500 dining voucher", "[Restaurant]", "https://example.com/x.jpg"
+    campaign.terms_version = "2026-11-17"
     db_session.commit()
 
     dry = runner.invoke(args=["drops", "update-studentxmas-wording", "--dry-run"]).output
@@ -342,6 +343,8 @@ def test_wording_update_restores_the_tracker_copy_and_nothing_else(app, db_sessi
     db_session.refresh(drop)
     assert (drop.title, drop.brand, drop.card_badge) == ("Food Voucher - KSh 1,500", "Dining", "DROPS NOV 25")
     assert drop.cover_image == "https://example.com/x.jpg" and drop.quantity == 1
+    db_session.refresh(campaign)
+    assert campaign.terms_version == "2026-11-18"
 
 
 def test_admin_overview_flags_drops_ready_to_pick_and_edits_a_drop(client, db_session, admin_token):

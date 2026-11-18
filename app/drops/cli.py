@@ -35,6 +35,9 @@ STUDENTXMAS_DROPS = [
 ]
 
 
+from app.drops.studentxmas import STUDENTXMAS_TERMS_VERSION  # noqa: E402
+
+
 def _apply_copy(drop, day: str) -> None:
     from app.drops.studentxmas import STUDENTXMAS_COPY
     copy = STUDENTXMAS_COPY[day]
@@ -71,7 +74,7 @@ def seed_studentxmas():
     campaign = Campaign(slug="studentxmas", name="StudentXmas",
                         starts_at=datetime.fromisoformat("2026-11-18"),
                         ends_at=_pick_time("2026-12-18") + timedelta(minutes=1),
-                        terms_version="2026-11-17", max_picks_per_member=1)
+                        terms_version=STUDENTXMAS_TERMS_VERSION, max_picks_per_member=1)
     for day, kind, quantity, crew_size in STUDENTXMAS_DROPS:
         drop = Drop(campaign_id=campaign.id, kind=kind, quantity=quantity, crew_size=crew_size,
                     pick_at=_pick_time(day), use_within_days=10)
@@ -84,7 +87,8 @@ def seed_studentxmas():
 @click.option("--dry-run", is_flag=True, help="List what would change without changing anything.")
 def update_studentxmas_wording(dry_run):
     """Set every StudentXmas drop's title, brand, badge, subtext and description to
-    the tracker's wording. Pick times, quantities, photos and picks are untouched."""
+    the tracker's wording, and the terms version students agree to when they join.
+    Pick times, quantities, photos and picks are untouched."""
     from app import db
     from app.models.campaign import Campaign
 
@@ -92,6 +96,9 @@ def update_studentxmas_wording(dry_run):
     if not campaign:
         raise click.ClickException("StudentXmas doesn't exist yet; run seed-studentxmas first.")
     changed = 0
+    if campaign.terms_version != STUDENTXMAS_TERMS_VERSION:
+        click.echo(f"Terms: version {campaign.terms_version} -> {STUDENTXMAS_TERMS_VERSION}")
+        campaign.terms_version = STUDENTXMAS_TERMS_VERSION
     for drop in sorted(campaign.drops, key=lambda d: d.pick_at):
         day = drop.pick_at.date().isoformat()
         before = (drop.title, drop.brand, drop.description, drop.card_badge, drop.card_subtext)

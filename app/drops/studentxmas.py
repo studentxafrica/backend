@@ -9,6 +9,9 @@ Kept word for word except where the team decided otherwise (18 Nov 2026):
 Brand is the tracker's Partner/Brand column.
 """
 
+# The terms on studentx.co.ke/drops/terms; recorded on each member when they join.
+STUDENTXMAS_TERMS_VERSION = "2026-11-18"
+
 _AIRTIME_250 = {
     "title": "Safaricom Airtime Top-Up - KSh 250",
     "brand": "Safaricom",
