@@ -314,6 +314,37 @@ def test_seed_command_creates_the_twelve_studentxmas_drops_once(app, db_session)
     campaign = db_session.query(Campaign).filter_by(slug="studentxmas").one()
     assert [d.quantity for d in campaign.drops] == [2, 2, 1, 2, 2, 1, 2, 2, 1, 1, 1, 1]
     assert campaign.drops[0].pick_at == datetime(2026, 11, 20, 9, 0)
+    drops = sorted(campaign.drops, key=lambda d: d.pick_at)
+    assert drops[0].title == "Safaricom Airtime Top-Up - KSh 250" and drops[0].card_badge == "DROPS MON & FRI"
+    assert drops[-1].title == "Go-Karting Grand Prix for 5" and drops[-1].card_subtext.startswith("5 Winner Spots")
+    # Six KSh 250 airtime drops share one card's wording; seven cards in all
+    assert len({d.title for d in drops}) == 7
+    wording = repr([(d.title, d.brand, d.description) for d in drops])
+    assert "[Restaurant]" not in wording and "Strikerz" not in wording and "@studentx " not in wording
+
+
+def test_wording_update_restores_the_tracker_copy_and_nothing_else(app, db_session):
+    from app.models.campaign import Campaign
+
+    runner = app.test_cli_runner()
+    runner.invoke(args=["drops", "seed-studentxmas"])
+    campaign = db_session.query(Campaign).filter_by(slug="studentxmas").one()
+    drop = sorted(campaign.drops, key=lambda d: d.pick_at)[2]
+    drop.title, drop.brand, drop.cover_image = "KSh 1,500 dining voucher", "[Restaurant]", "https://example.com/x.jpg"
+    campaign.terms_version = "2026-11-17"
+    db_session.commit()
+
+    dry = runner.invoke(args=["drops", "update-studentxmas-wording", "--dry-run"]).output
+    assert "Would update 1 drops" in dry
+    db_session.refresh(drop)
+    assert drop.title == "KSh 1,500 dining voucher"
+
+    assert "Updated 1 drops" in runner.invoke(args=["drops", "update-studentxmas-wording"]).output
+    db_session.refresh(drop)
+    assert (drop.title, drop.brand, drop.card_badge) == ("Food Voucher - KSh 1,500", "Dining", "DROPS NOV 25")
+    assert drop.cover_image == "https://example.com/x.jpg" and drop.quantity == 1
+    db_session.refresh(campaign)
+    assert campaign.terms_version == "2026-11-18"
 
 
 def test_admin_overview_flags_drops_ready_to_pick_and_edits_a_drop(client, db_session, admin_token):
@@ -333,6 +364,14 @@ def test_admin_overview_flags_drops_ready_to_pick_and_edits_a_drop(client, db_se
     assert page["upcoming"][0]["brand"] == "Java House"
     assert page["upcoming"][0]["coverImage"] == "https://example.com/coffee.jpg"
     assert client.put(f"/api/v1/drops/admin/drops/{drops[0].id}", headers=headers, json={"title": ""}).status_code == 400
+
+    worded = client.put(f"/api/v1/drops/admin/drops/{drops[0].id}", headers=headers,
+                        json={"badge": "DROPS NOV 25", "subtext": "1 Voucher • City Eats"})
+    assert worded.status_code == 200
+    card = client.get(f"/api/v1/drops/campaigns/{SLUG}").get_json()["data"]["upcoming"][0]
+    assert (card["badge"], card["subtext"]) == ("DROPS NOV 25", "1 Voucher • City Eats")
+    assert client.put(f"/api/v1/drops/admin/drops/{drops[0].id}", headers=headers,
+                      json={"badge": "X" * 65}).status_code == 400
 
 
 def test_run_due_picks_drops_whose_time_has_passed(app, client, db_session):

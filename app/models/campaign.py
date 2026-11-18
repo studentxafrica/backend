@@ -43,6 +43,9 @@ class Drop(BaseModel, db.Model):
     # The brand shown as the perk, e.g. "Safaricom". Not a sponsor.
     brand: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Card wording: a short badge ("DROPS MON & FRI") and a line under the title.
+    card_badge: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    card_subtext: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Photo of the perk itself (not a brand logo). Optional.
     cover_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     kind: Mapped[str] = mapped_column(Enum(*DROP_KINDS.values(), name="drop_kind"), nullable=False)
