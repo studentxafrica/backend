@@ -4,6 +4,7 @@
     flask drops run-due            pick every drop whose time has come
     flask drops seed-studentxmas   create the StudentXmas campaign and its 12 drops
     flask drops set-venue-pin      set the PIN a venue uses to mark passes as used
+    flask drops update-studentxmas-wording   apply the tracker's wording to the drops
 """
 from datetime import datetime, timedelta
 
@@ -15,27 +16,30 @@ drops_cli = AppGroup("drops", help="Festive Drops: picks and campaign setup.")
 # 12:00 in Nairobi (EAT, UTC+3) is 09:00 UTC.
 _PICK_HOUR_UTC = 9
 
-# From the StudentX Festive Season Promotion Tracker. Quantities are set by management.
+# From the StudentX Festive Season Promotion Tracker. Quantities are set by
+# management; wording is in app/drops/studentxmas.py.
 STUDENTXMAS_DROPS = [
-    ("2026-11-20", "KSh 250 Safaricom airtime", "Safaricom", "airtime", 2, None),
-    ("2026-11-23", "KSh 250 Safaricom airtime", "Safaricom", "airtime", 2, None),
-    ("2026-11-25", "KSh 1,500 dining voucher", "[Restaurant]", "voucher", 1, None),
-    ("2026-11-27", "KSh 250 Safaricom airtime", "Safaricom", "airtime", 2, None),
-    ("2026-11-30", "KSh 250 Safaricom airtime", "Safaricom", "airtime", 2, None),
-    ("2026-12-02", "Bowling for 4", "Strikerz, Westlands", "crew", 1, 4),
-    ("2026-12-04", "KSh 250 Safaricom airtime", "Safaricom", "airtime", 2, None),
-    ("2026-12-07", "KSh 250 Safaricom airtime", "Safaricom", "airtime", 2, None),
-    ("2026-12-09", "KSh 2,500 ShopZetu voucher", "ShopZetu", "voucher", 1, None),
-    ("2026-12-11", "KSh 1,000 Safaricom airtime", "Safaricom", "airtime", 1, None),
-    ("2026-12-14", "Bowling + arcade for 4", "Strikerz, Westlands", "crew", 1, 4),
-    ("2026-12-18", "Go-karting for 5", "Mad Max", "crew", 1, 5),
+    # (pick date, kind, quantity, crew size)
+    ("2026-11-20", "airtime", 2, None),
+    ("2026-11-23", "airtime", 2, None),
+    ("2026-11-25", "voucher", 1, None),
+    ("2026-11-27", "airtime", 2, None),
+    ("2026-11-30", "airtime", 2, None),
+    ("2026-12-02", "crew", 1, 4),
+    ("2026-12-04", "airtime", 2, None),
+    ("2026-12-07", "airtime", 2, None),
+    ("2026-12-09", "voucher", 1, None),
+    ("2026-12-11", "airtime", 1, None),
+    ("2026-12-14", "crew", 1, 4),
+    ("2026-12-18", "crew", 1, 5),
 ]
 
-_DESCRIPTIONS = {
-    "airtime": "Airtime from StudentX, credited to the Safaricom number on your profile on the day you're picked.",
-    "voucher": "A {brand} voucher from StudentX. Show your StudentX pass at the counter within 10 days.",
-    "crew": "A pass for you and {friends} friends at {brand}, from StudentX. Every friend needs a verified StudentX account before the pass is issued.",
-}
+
+def _apply_copy(drop, day: str) -> None:
+    from app.drops.studentxmas import STUDENTXMAS_COPY
+    copy = STUDENTXMAS_COPY[day]
+    drop.title, drop.brand, drop.description = copy["title"], copy["brand"], copy["description"]
+    drop.card_badge, drop.card_subtext = copy["badge"], copy["subtext"]
 
 
 def _pick_time(day: str) -> datetime:
@@ -68,12 +72,44 @@ def seed_studentxmas():
                         starts_at=datetime.fromisoformat("2026-11-18"),
                         ends_at=_pick_time("2026-12-18") + timedelta(minutes=1),
                         terms_version="2026-11-17", max_picks_per_member=1)
-    for day, title, brand, kind, quantity, crew_size in STUDENTXMAS_DROPS:
-        Drop(campaign_id=campaign.id, title=title, brand=brand, kind=kind, quantity=quantity,
-             crew_size=crew_size, pick_at=_pick_time(day), use_within_days=10,
-             description=_DESCRIPTIONS[kind].format(brand=brand, friends=(crew_size or 1) - 1))
+    for day, kind, quantity, crew_size in STUDENTXMAS_DROPS:
+        drop = Drop(campaign_id=campaign.id, kind=kind, quantity=quantity, crew_size=crew_size,
+                    pick_at=_pick_time(day), use_within_days=10)
+        _apply_copy(drop, day)
     db.session.commit()
     click.echo(f"Created StudentXmas with {len(STUDENTXMAS_DROPS)} drops.")
+
+
+@drops_cli.command("update-studentxmas-wording")
+@click.option("--dry-run", is_flag=True, help="List what would change without changing anything.")
+def update_studentxmas_wording(dry_run):
+    """Set every StudentXmas drop's title, brand, badge, subtext and description to
+    the tracker's wording. Pick times, quantities, photos and picks are untouched."""
+    from app import db
+    from app.models.campaign import Campaign
+
+    campaign = db.session.query(Campaign).filter_by(slug="studentxmas").first()
+    if not campaign:
+        raise click.ClickException("StudentXmas doesn't exist yet; run seed-studentxmas first.")
+    changed = 0
+    for drop in sorted(campaign.drops, key=lambda d: d.pick_at):
+        day = drop.pick_at.date().isoformat()
+        before = (drop.title, drop.brand, drop.description, drop.card_badge, drop.card_subtext)
+        try:
+            _apply_copy(drop, day)
+        except KeyError:
+            click.echo(f"{day}: no wording in the tracker for this date; left as it is.", err=True)
+            continue
+        after = (drop.title, drop.brand, drop.description, drop.card_badge, drop.card_subtext)
+        if before != after:
+            changed += 1
+            click.echo(f"{day}: {before[0]} -> {after[0]}")
+    if dry_run:
+        db.session.rollback()
+        click.echo(f"Would update {changed} drops.")
+    else:
+        db.session.commit()
+        click.echo(f"Updated {changed} drops.")
 
 
 @drops_cli.command("set-venue-pin")

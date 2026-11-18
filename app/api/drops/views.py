@@ -88,6 +88,8 @@ def _drop_json(drop: Drop, member: CampaignMember | None, my_pick_drop_ids: set,
         "title": drop.title,
         "brand": drop.brand,
         "description": drop.description,
+        "badge": drop.card_badge,
+        "subtext": drop.card_subtext,
         "coverImage": drop.cover_image,
         "kind": drop.kind,
         "quantity": drop.quantity,
@@ -407,6 +409,7 @@ def admin_campaign(slug):
         "verifiedMembers": verified,
         "drops": [{
             "id": d.id, "number": i + 1, "title": d.title, "brand": d.brand, "description": d.description,
+            "badge": d.card_badge, "subtext": d.card_subtext,
             "coverImage": d.cover_image, "kind": d.kind, "quantity": d.quantity, "crewSize": d.crew_size,
             "pickAt": _iso(d.pick_at), "status": d.status,
             "readyToPick": d.status == "upcoming" and now >= d.pick_at,
@@ -433,6 +436,12 @@ def admin_edit_drop(drop_id):
             setattr(drop, column, value)
     if "description" in data:
         drop.description = str(data["description"] or "").strip() or None
+    for field, column, limit in (("badge", "card_badge", 64), ("subtext", "card_subtext", 128)):
+        if field in data:
+            value = str(data[field] or "").strip()
+            if len(value) > limit:
+                return jsonify({"message": f"{field.capitalize()} must be at most {limit} characters"}), 400
+            setattr(drop, column, value or None)
     if "coverImage" in data:
         image = data["coverImage"]
         if not image:
@@ -448,4 +457,5 @@ def admin_edit_drop(drop_id):
                 return jsonify({"message": "Couldn't upload the photo", "description": str(err)[:200]}), 502
     drop.save()
     return jsonify({"message": "Drop updated", "data": {"id": drop.id, "title": drop.title, "brand": drop.brand,
-                                                        "description": drop.description, "coverImage": drop.cover_image}}), 200
+                                                        "description": drop.description, "badge": drop.card_badge,
+                                                        "subtext": drop.card_subtext, "coverImage": drop.cover_image}}), 200

@@ -30,7 +30,7 @@ try {
   await page.screenshot({ path: `${RESULTS}/admin-drops.png`, fullPage: true });
 
   // Venue PIN for the ShopZetu voucher drop
-  const shopzetu = page.locator('div.px-6', { hasText: 'ShopZetu voucher' }).first();
+  const shopzetu = page.locator('div.px-6', { hasText: 'SHOPZETU Voucher' }).first();
   await shopzetu.getByRole('button', { name: 'Venue PIN' }).click();
   await page.fill('#venue-pin', '4821');
   await page.click('text=Save PIN');
@@ -39,18 +39,25 @@ try {
   record(true, 'Venue PIN can be set, and the drop shows it');
 
   // Mark airtime sent for the first airtime recipient
-  const airtime = page.locator('div.px-6', { hasText: /picked/ }).filter({ hasText: 'Safaricom airtime' }).first();
-  await airtime.getByRole('button', { name: /picked/ }).click();
-  const before = await page.getByRole('button', { name: 'Mark airtime sent' }).count();
-  await page.getByRole('button', { name: 'Mark airtime sent' }).first().click();
-  await page.waitForSelector('text=/Marked as sent to/');
-  await page.waitForTimeout(800);
-  const after = await page.getByRole('button', { name: 'Mark airtime sent' }).count();
-  record(after === before - 1, 'Airtime can be marked as sent', `${before} → ${after} to send`);
+  // (only once an airtime drop has been picked)
+  const airtime = page.locator('div.px-6', { hasText: /picked/ }).filter({ hasText: /Safaricom .*Airtime/i }).first();
+  if (await airtime.count()) {
+    await airtime.getByRole('button', { name: /picked/ }).click();
+    const before = await page.getByRole('button', { name: 'Mark airtime sent' }).count();
+    await page.getByRole('button', { name: 'Mark airtime sent' }).first().click();
+    await page.waitForSelector('text=/Marked as sent to/');
+    await page.waitForTimeout(800);
+    const after = await page.getByRole('button', { name: 'Mark airtime sent' }).count();
+    record(after === before - 1, 'Airtime can be marked as sent', `${before} → ${after} to send`);
+  } else {
+    console.log('SKIP     Airtime can be marked as sent — no airtime drop picked yet');
+  }
 
   // Edit a drop's description
   await shopzetu.getByRole('button', { name: 'Edit' }).click();
-  await page.fill('#drop-description', 'A ShopZetu voucher from StudentX for your holiday fit. Show your StudentX pass at checkout within 10 days.');
+  record(await page.inputValue('#drop-badge') === 'DROPS DEC 9' && (await page.inputValue('#drop-subtext')).startsWith('1 Voucher'),
+    'The Edit dialog shows the card badge and subtext');
+  await page.fill('#drop-subtext', '1 Voucher • Holiday Fit Check');
   await page.click('role=button[name="Save"]');
   await page.waitForSelector('text=Drop updated');
   record(true, 'A drop can be edited');
