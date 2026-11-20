@@ -11,7 +11,7 @@ from app.drops import service
 from app.drops.service import DropError, utcnow
 from app.models import Consumer
 from app.models.campaign import (FULFILMENT_STATUS, Campaign, CampaignMember,
-                                 CrewMember, Drop, DropPick)
+                                 Drop, DropPick, DropRun)
 from app.models.consumer import VerificationRequestStatus
 from app.phone import mask_phone
 from app.utils import roles_required
@@ -70,7 +70,7 @@ def _verification_state(consumer):
 
 def _drop_json(drop: Drop, member: CampaignMember | None, my_pick_drop_ids: set, next_id: str | None,
                number: int, total: int, consumer: Consumer | None = None):
-    ended = drop.status == "picked"
+    ended = drop.status == "picked" and drop.run is not None and drop.run.approved_at is not None
     result = None
     if ended:
         if drop.id in my_pick_drop_ids:
@@ -103,13 +103,15 @@ def _drop_json(drop: Drop, member: CampaignMember | None, my_pick_drop_ids: set,
 
 def _campaign_view(campaign: Campaign, consumer: Consumer | None):
     member = service.membership(campaign, consumer) if consumer else None
-    my_picks = (db.session.query(DropPick).filter_by(campaign_id=campaign.id, consumer_id=consumer.id).all()
-                if consumer else [])
+    my_picks = (db.session.query(DropPick).join(DropRun, DropRun.drop_id == DropPick.drop_id)
+                .filter(DropPick.campaign_id == campaign.id, DropPick.consumer_id == consumer.id,
+                        DropRun.approved_at.isnot(None)).all() if consumer else [])
     my_pick_drop_ids = {p.drop_id for p in my_picks}
     drops_ = sorted(campaign.drops, key=lambda d: d.pick_at)
     numbers = {d.id: i + 1 for i, d in enumerate(drops_)}
-    upcoming = [d for d in drops_ if d.status == "upcoming"]
-    ended = sorted((d for d in drops_ if d.status == "picked"), key=lambda d: d.pick_at, reverse=True)
+    upcoming = [d for d in drops_ if not (d.status == "picked" and d.run and d.run.approved_at)]
+    ended = sorted((d for d in drops_ if d.status == "picked" and d.run and d.run.approved_at),
+                   key=lambda d: d.pick_at, reverse=True)
     next_id = upcoming[0].id if upcoming else None
 
     def as_json(d):
@@ -204,7 +206,8 @@ def _pick_json(pick: DropPick):
 @drops.get('/me/picks')
 @roles_required('consumer')
 def my_picks():
-    picks = (db.session.query(DropPick).filter_by(consumer_id=g.user.id)
+    picks = (db.session.query(DropPick).join(DropRun, DropRun.drop_id == DropPick.drop_id)
+             .filter(DropPick.consumer_id == g.user.id, DropRun.approved_at.isnot(None))
              .order_by(DropPick.picked_at.desc()).all())
     return jsonify({"data": [_pick_json(p) for p in picks]}), 200
 
@@ -212,6 +215,8 @@ def my_picks():
 def _owned_pick(pick_id, allow_crew=False):
     pick = db.session.get(DropPick, pick_id)
     if not pick:
+        raise DropError("Perk not found", 404)
+    if not pick.drop.run or not pick.drop.run.approved_at:
         raise DropError("Perk not found", 404)
     is_owner = pick.consumer_id == g.user.id
     in_crew = allow_crew and any(m.consumer_id == g.user.id for m in pick.crew)
@@ -260,6 +265,8 @@ def crew_invite(code):
     """What a friend sees when they open a crew link. First name only."""
     pick = db.session.query(DropPick).filter_by(crew_code=code).first()
     if not pick:
+        return jsonify({"message": "This crew link isn't valid"}), 404
+    if not pick.drop.run or not pick.drop.run.approved_at:
         return jsonify({"message": "This crew link isn't valid"}), 404
     drop = pick.drop
     return jsonify({"data": {
@@ -332,7 +339,20 @@ def admin_pick(drop_id):
         return _error(err)
     return jsonify({"data": {"ranAt": _iso(run.ran_at), "eligible": run.eligible_count,
                              "picked": run.picked_count, "shortfall": run.shortfall,
-                             "eligibleDigest": run.eligible_digest}}), 200
+                             "eligibleDigest": run.eligible_digest,
+                             "approvalStatus": "approved" if run.approved_at else "pending"}}), 200
+
+
+@drops.post('/admin/drops/<drop_id>/approve')
+@roles_required('admin')
+def admin_approve_pick(drop_id):
+    try:
+        run = service.approve_pick(drop_id, approved_by=f"admin:{g.user.username}")
+    except DropError as err:
+        db.session.rollback()
+        return _error(err)
+    return jsonify({"data": {"approvedAt": _iso(run.approved_at), "approvedBy": run.approved_by,
+                             "picked": run.picked_count}}), 200
 
 
 @drops.get('/admin/campaigns/<slug>/picks')
@@ -356,6 +376,7 @@ def admin_picks(slug):
             "crew": [f"{m.consumer.first_name} {m.consumer.last_name}" for m in p.crew],
             "crewComplete": service.crew_complete(p), "expiresAt": _iso(p.expires_at),
             "redeemedAt": _iso(p.redeemed_at),
+            "approved": bool(p.drop.run and p.drop.run.approved_at),
         } for p in picks],
     }}), 200
 
@@ -369,6 +390,8 @@ def admin_fulfilment(pick_id):
     pick = db.session.get(DropPick, pick_id)
     if not pick:
         return jsonify({"message": "Perk not found"}), 404
+    if not pick.drop.run or not pick.drop.run.approved_at:
+        return jsonify({"message": "Approve the selected winners before fulfilment"}), 409
     pick.fulfilment_status = status
     pick.fulfilled_at = utcnow() if status == FULFILMENT_STATUS["SENT"] else pick.fulfilled_at
     pick.save()
@@ -410,6 +433,7 @@ def admin_campaign(slug):
             "coverImage": d.cover_image, "kind": d.kind, "quantity": d.quantity, "crewSize": d.crew_size,
             "pickAt": _iso(d.pick_at), "status": d.status,
             "readyToPick": d.status == "upcoming" and now >= d.pick_at,
+            "approvalStatus": "not_picked" if not d.run else ("approved" if d.run.approved_at else "pending"),
             "venuePinSet": bool(d._venue_pin),
             "run": {"ranAt": _iso(d.run.ran_at), "eligible": d.run.eligible_count, "picked": d.run.picked_count,
                     "shortfall": d.run.shortfall, "triggeredBy": d.run.triggered_by} if d.run else None,

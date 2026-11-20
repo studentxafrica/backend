@@ -74,6 +74,12 @@ def backdate_membership(campaign, student, hours):
     db.session.commit()
 
 
+def approve_pick(drop_id):
+    from app.drops.service import approve_pick as approve
+
+    return approve(drop_id, "admin:test")
+
+
 # Registration ---------------------------------------------------------------
 
 def test_registration_saves_phone_and_date_of_birth(client, db_session):
@@ -105,6 +111,8 @@ def test_campaign_page_lists_next_drop_first_and_ended_drops_separately(client, 
                                      (24, "voucher", 1, None), (-26, "voucher", 1, None)])
     run_pick(drops[1].id, "test")
     run_pick(drops[3].id, "test")
+    approve_pick(drops[1].id)
+    approve_pick(drops[3].id)
 
     data = client.get(f"/api/v1/drops/campaigns/{SLUG}").get_json()["data"]
 
@@ -130,6 +138,7 @@ def test_any_student_can_join_but_only_verified_members_are_picked(client, db_se
     assert response.get_json()["data"]["member"]["verification"] == "verified"
 
     run = run_pick(drops[0].id, "test")
+    approve_pick(drops[0].id)
 
     assert run.eligible_count == 1 and run.picked_count == 1
     view = client.get(f"/api/v1/drops/campaigns/{SLUG}", headers=login(client, unverified)).get_json()["data"]
@@ -177,6 +186,9 @@ def test_pick_chooses_quantity_from_members_and_never_picks_anyone_twice(client,
     assert runs[2].shortfall == 1
     picked = [p.consumer_id for p in db_session.query(DropPick).all()]
     assert len(picked) == len(set(picked)) == 5
+    assert sent_mail == []
+    for drop in drops:
+        approve_pick(drop.id)
     assert len(sent_mail) == 5
 
 
@@ -211,6 +223,7 @@ def test_results_tell_each_member_their_own_outcome_only(client, db_session):
         join(client, login(client, s))
         backdate_membership(campaign, s, 5)
     run_pick(drops[0].id, "test")
+    approve_pick(drops[0].id)
 
     results = {}
     for s in (alice, brian):
@@ -230,6 +243,44 @@ def test_admin_pick_endpoint_needs_an_admin(client, db_session, consumer_token, 
     response = client.post(f"/api/v1/drops/admin/drops/{drops[0].id}/pick", headers=bearer(admin_token))
     assert response.status_code == 200
     assert response.get_json()["data"]["eligible"] == 0
+    assert response.get_json()["data"]["approvalStatus"] == "pending"
+
+
+def test_winners_stay_private_until_an_admin_approves_them(client, db_session, admin_token, sent_mail):
+    from app.drops.service import run_pick
+    from app.models.campaign import DropPick
+
+    campaign, drops = make_campaign([(-1, "airtime", 1, None)])
+    student = make_student("pending@example.com")
+    join(client, login(client, student))
+    backdate_membership(campaign, student, 5)
+    run_pick(drops[0].id, "test")
+    pick = db_session.query(DropPick).one()
+    client.delete_cookie("access_token")
+
+    public = client.get(f"/api/v1/drops/campaigns/{SLUG}", headers=login(client, student)).get_json()["data"]
+    assert public["ended"] == []
+    assert public["member"]["picks"] == 0
+    assert client.get("/api/v1/drops/me/picks", headers=login(client, student)).get_json()["data"] == []
+    assert client.get(f"/api/v1/drops/picks/{pick.id}", headers=login(client, student)).status_code == 404
+    assert sent_mail == []
+
+    client.delete_cookie("access_token")
+    overview = client.get(f"/api/v1/drops/admin/campaigns/{SLUG}", headers=bearer(admin_token)).get_json()["data"]
+    assert overview["drops"][0]["approvalStatus"] == "pending"
+    selected = client.get(f"/api/v1/drops/admin/campaigns/{SLUG}/picks", headers=bearer(admin_token)).get_json()["data"]
+    assert selected["picks"][0]["approved"] is False
+    response = client.post(f"/api/v1/drops/admin/drops/{drops[0].id}/approve", headers=bearer(admin_token))
+    assert response.status_code == 200
+    assert response.get_json()["data"]["approvedBy"] == "admin:ops-admin"
+    assert len(sent_mail) == 1
+
+    public = client.get(f"/api/v1/drops/campaigns/{SLUG}", headers=login(client, student)).get_json()["data"]
+    assert public["ended"][0]["result"] == "picked"
+    client.delete_cookie("access_token")
+    again = client.post(f"/api/v1/drops/admin/drops/{drops[0].id}/approve", headers=bearer(admin_token))
+    assert again.status_code == 200
+    assert len(sent_mail) == 1
 
 
 # Crews and passes ---------------------------------------------------------------
@@ -244,6 +295,7 @@ def test_crew_pass_is_issued_once_every_friend_is_verified(client, db_session):
     join(client, login(client, winner))
     backdate_membership(campaign, winner, 5)
     run_pick(drops[0].id, "test")
+    approve_pick(drops[0].id)
     pick = db_session.query(DropPick).one()
     winner_headers = login(client, winner)
 
@@ -273,6 +325,7 @@ def test_venue_checks_and_redeems_a_live_pass_once(client, db_session, admin_tok
     join(client, login(client, student))
     backdate_membership(campaign, student, 5)
     run_pick(drops[0].id, "test")
+    approve_pick(drops[0].id)
     pick = db_session.query(DropPick).one()
     code = client.get(f"/api/v1/drops/picks/{pick.id}/pass", headers=login(client, student)).get_json()["data"]["code"]
 
@@ -364,6 +417,9 @@ def test_winner_email_matches_the_reward(client, db_session, sent_mail, kind, cr
     assert join(client, login(client, student)).status_code == 201
     backdate_membership(campaign, student, 10)
     run_pick(drops[0].id, "test")
+
+    assert sent_mail == []
+    approve_pick(drops[0].id)
 
     [mail] = sent_mail
     assert mail["subject"] == "Congratulations! Your StudentXmas Reward is UNLOCKED!"
