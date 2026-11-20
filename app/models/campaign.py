@@ -94,6 +94,8 @@ class DropRun(BaseModel, db.Model):
     # SHA-256 of the sorted IDs of every eligible member, so the pool can be audited.
     eligible_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     triggered_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     drop = relationship("Drop", back_populates="run")
 

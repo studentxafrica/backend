@@ -137,7 +137,20 @@ def run_pick(drop_id: str, triggered_by: str, now: datetime | None = None) -> Dr
     db.session.commit()
     current_app.logger.info(
         f"Drop {drop.id} picked by {triggered_by}: {len(chosen)} of {len(pool)} eligible, shortfall {run.shortfall}")
-    notify_picked(drop)
+    return run
+
+
+def approve_pick(drop_id: str, approved_by: str, now: datetime | None = None) -> DropRun:
+    """Publish a selected set of recipients and send their reward emails."""
+    run = (db.session.query(DropRun).join(Drop).filter(Drop.id == drop_id)
+           .with_for_update().first())
+    if not run:
+        raise DropError("Winners have not been picked yet", 409)
+    if run.approved_at is None:
+        run.approved_at = now or utcnow()
+        run.approved_by = approved_by
+        db.session.commit()
+    notify_picked(run.drop)
     return run
 
 
@@ -189,6 +202,8 @@ def join_crew(code: str, consumer: Consumer) -> CrewMember:
     if not pick:
         raise DropError("This crew link isn't valid", 404)
     drop = pick.drop
+    if not drop.run or not drop.run.approved_at:
+        raise DropError("This crew perk isn't available yet", 404)
     if pick.consumer_id == consumer.id:
         raise DropError("This is your own crew", 400)
     if utcnow() >= pick.expires_at:
@@ -232,8 +247,9 @@ def find_pass(code: str, at: datetime | None = None) -> DropPick | None:
     if len(code) != 6:
         return None
     previous = at - timedelta(seconds=PASS_CODE_SECONDS)
-    candidates = (db.session.query(DropPick).join(Drop)
-                  .filter(Drop.kind != "airtime", DropPick.expires_at > at - timedelta(days=1)).all())
+    candidates = (db.session.query(DropPick).join(Drop).join(DropRun)
+                  .filter(DropRun.approved_at.isnot(None), Drop.kind != "airtime",
+                          DropPick.expires_at > at - timedelta(days=1)).all())
     for pick in candidates:
         if hmac.compare_digest(pass_code(pick, at), code) or hmac.compare_digest(pass_code(pick, previous), code):
             return pick
